@@ -15,7 +15,7 @@ local function notify(msg, msgType)
     QBCore.Functions.Notify(msg, msgType or 'primary', 7000)
 end
 
--- Spawn de veículo junto ao jogador na posição dada
+-- Spawn de veículo na posição dada
 local function spawnVehicle(model, coords)
     local hash = GetHashKey(model)
     RequestModel(hash)
@@ -24,9 +24,16 @@ local function spawnVehicle(model, coords)
     -- Destruir veículo anterior se ainda existir
     if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
         DeleteEntity(spawnedVehicle)
+        spawnedVehicle = nil
     end
 
-    local veh = CreateVehicle(hash, coords.x, coords.y, coords.z, coords.w, true, false)
+    -- Aguardar que o mundo carregue na posição do spawn
+    while not IsPositionOccupied(coords.x, coords.y, coords.z, 0.5, false, true, false, false, false, 0, false) and
+          not HasCollisionLoadedAroundEntity(PlayerPedId()) do
+        Citizen.Wait(100)
+    end
+
+    local veh = CreateVehicle(hash, coords.x, coords.y, coords.z + 0.5, coords.w, true, false)
     SetVehicleNumberPlateText(veh, 'JOGO-' .. math.random(1000, 9999))
     SetEntityInvincible(veh, false)
     SetVehicleDoorsLocked(veh, 1)
@@ -38,8 +45,9 @@ end
 
 -- Teleportar o ped para um veículo como condutor
 local function warpIntoCar(veh)
+    if not DoesEntityExist(veh) then return end
     local ped = PlayerPedId()
-    SetPedIntoVehicle(ped, veh, -1)   -- -1 = lugar do condutor
+    TaskWarpPedIntoVehicle(ped, veh, -1)   -- -1 = lugar do condutor
 end
 
 -- Dar arma ao jogador
@@ -55,37 +63,31 @@ local function removeAllWeapons()
 end
 
 -- ──────────────────────────────────────────────
---  Gestão de handcuff (imobilizar polícias)
---  Usa freeze + bloqueio de controlos para não
---  depender de qb-policejob.
+--  Gestão de freeze (imobilizar polícias)
 -- ──────────────────────────────────────────────
 
-local freezeThread = nil
+local isFrozen = false
 
 local function freezePlayer(active)
+    isFrozen = active
     local ped = PlayerPedId()
     FreezeEntityPosition(ped, active)
     SetEntityInvincible(ped, active)
 
     if active then
         -- Thread contínuo a bloquear inputs de movimento e combate
-        freezeThread = Citizen.CreateThread(function()
-            while myRole == 'cop' and roundActive do
-                -- Movimento
-                DisableControlAction(0, 30, true)  -- Move LR
-                DisableControlAction(0, 31, true)  -- Move UD
-                DisableControlAction(0, 21, true)  -- Sprint
-                DisableControlAction(0, 22, true)  -- Jump
-                DisableControlAction(0, 24, true)  -- Attack
-                DisableControlAction(0, 25, true)  -- Aim
-                DisableControlAction(0, 263, true) -- Melee Attack
+        Citizen.CreateThread(function()
+            while isFrozen do
+                DisableControlAction(0, 30, true)   -- Move LR
+                DisableControlAction(0, 31, true)   -- Move UD
+                DisableControlAction(0, 21, true)   -- Sprint
+                DisableControlAction(0, 22, true)   -- Jump
+                DisableControlAction(0, 24, true)   -- Attack
+                DisableControlAction(0, 25, true)   -- Aim
+                DisableControlAction(0, 263, true)  -- Melee Attack
                 Citizen.Wait(0)
             end
         end)
-    else
-        -- Descongelar
-        FreezeEntityPosition(ped, false)
-        SetEntityInvincible(ped, false)
     end
 end
 
@@ -106,15 +108,9 @@ local function spawnTempBlips(positions, duration)
         if pos.role == 'cop' then
             SetBlipSprite(blip, 60)    -- ícone polícia
             SetBlipColour(blip, 3)     -- azul
-            BeginTextCommandSetBlipName(blip)
-            AddTextComponentString('Polícia (aprox.)')
-            EndTextCommandSetBlipName(blip)
         else
             SetBlipSprite(blip, 84)    -- ícone correr
             SetBlipColour(blip, 1)     -- vermelho
-            BeginTextCommandSetBlipName(blip)
-            AddTextComponentString('Ladrão (aprox.)')
-            EndTextCommandSetBlipName(blip)
         end
 
         SetBlipScale(blip, 0.9)
@@ -155,6 +151,15 @@ local function closeNUI()
 end
 
 -- ──────────────────────────────────────────────
+--  Registo de Eventos de Rede (OBRIGATÓRIO)
+-- ──────────────────────────────────────────────
+
+RegisterNetEvent('policia:assignRole')
+RegisterNetEvent('policia:releasePolice')
+RegisterNetEvent('policia:sendClue')
+RegisterNetEvent('policia:endRound')
+
+-- ──────────────────────────────────────────────
 --  Eventos do servidor
 -- ──────────────────────────────────────────────
 
@@ -162,6 +167,7 @@ end
 AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spawnCoords, weapon, ammo)
     myRole      = role
     roundActive = true
+    isFrozen    = false
 
     removeAllWeapons()
 
@@ -170,15 +176,15 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
     SetEntityCoords(ped, spawnCoords.x, spawnCoords.y, spawnCoords.z, false, false, false, true)
     SetEntityHeading(ped, spawnCoords.w)
 
-    Citizen.Wait(500)  -- aguardar que o mundo carregue
+    Citizen.Wait(1000)  -- aguardar que o mundo carregue
 
     -- Spawn veículo
     local veh = spawnVehicle(carModel, spawnCoords)
-    Citizen.Wait(300)
+    Citizen.Wait(500)
     warpIntoCar(veh)
 
     -- Dar arma
-    Citizen.Wait(200)
+    Citizen.Wait(300)
     giveWeapon(weapon, ammo)
 
     if role == 'cop' then
@@ -208,6 +214,7 @@ end)
 AddEventHandler('policia:endRound', function(reason)
     roundActive = false
     myRole      = nil
+    isFrozen    = false
 
     freezePlayer(false)
     closeNUI()
@@ -217,6 +224,12 @@ AddEventHandler('policia:endRound', function(reason)
         if DoesBlipExist(b) then RemoveBlip(b) end
     end
     tempBlips = {}
+
+    -- Remover veículo
+    if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
+        DeleteEntity(spawnedVehicle)
+        spawnedVehicle = nil
+    end
 
     -- Remover armas
     removeAllWeapons()
