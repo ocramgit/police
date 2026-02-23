@@ -453,11 +453,24 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
     removeAllWeapons()
 
     local ped = PlayerPedId()
-    SetEntityCoords(ped, spawnCoords.x, spawnCoords.y, spawnCoords.z, false, false, false, true)
-    SetEntityHeading(ped, spawnCoords.w)
-    Citizen.Wait(1200)
 
-    local veh = spawnVehicle(carModel, spawnCoords)
+    -- 1. Teleporte inicial para a área (z+10 para não ficar preso no chão)
+    SetEntityCoords(ped, spawnCoords.x, spawnCoords.y, spawnCoords.z + 10.0, false, false, false, true)
+    Citizen.Wait(2000)  -- aguardar que o mundo e colisões carreguem
+
+    -- 2. Encontrar o nó de estrada mais próximo (GARANTE estrada real, sem void nem edifícios)
+    local roadFound, rx, ry, rz = GetClosestVehicleNode(spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, 3.0, 0)
+
+    local spawnX = roadFound and rx or spawnCoords.x
+    local spawnY = roadFound and ry or spawnCoords.y
+    local spawnZ = roadFound and (rz + 1.0) or spawnCoords.z
+
+    SetEntityCoords(ped, spawnX, spawnY, spawnZ, false, false, false, true)
+    SetEntityHeading(ped, spawnCoords.w)
+    Citizen.Wait(500)
+
+    local roadPos = vector4(spawnX, spawnY, spawnZ, spawnCoords.w)
+    local veh = spawnVehicle(carModel, roadPos)
     Citizen.Wait(500)
     warpIntoCar(veh)
     Citizen.Wait(400)
