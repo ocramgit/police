@@ -21,6 +21,7 @@ let totalSeconds = 0;
 let currentSeconds = 0;
 let intervalId = null;
 let currentRole = null;
+let savedRoundDuration = 900;  // guardado no 'open', usado no 'released'
 
 // ── Utilitários ──────────────────────────────
 
@@ -107,6 +108,7 @@ window.addEventListener('message', function (event) {
 
         case 'open': {
             currentRole = data.role;
+            savedRoundDuration = data.roundDuration || 900;
             document.body.classList.remove('cop', 'robber');
             document.body.classList.add(data.role);
 
@@ -115,15 +117,20 @@ window.addEventListener('message', function (event) {
                 roleLabel.textContent = 'POLÍCIA';
                 actionHint.classList.remove('hidden');
                 if (data.lockSeconds > 0) {
-                    startLockPhase(data.lockSeconds, data.roundDuration);
+                    startLockPhase(data.lockSeconds, savedRoundDuration);
                 } else {
-                    startHuntPhase(data.roundDuration);
+                    startHuntPhase(savedRoundDuration);
                 }
             } else {
                 roleIcon.textContent = '🔪';
                 roleLabel.textContent = 'LADRÃO';
                 actionHint.classList.add('hidden');
-                startHuntPhase(data.roundDuration);
+                // Ladrão vê countdown do freeze, depois 15 minutos
+                if (data.lockSeconds > 0) {
+                    startLockPhase(data.lockSeconds, savedRoundDuration);
+                } else {
+                    startHuntPhase(savedRoundDuration);
+                }
             }
 
             robberCount.classList.remove('hidden');
@@ -136,7 +143,8 @@ window.addEventListener('message', function (event) {
             phaseLabel.textContent = '🚨 LIBERTO! À CAÇA!';
             timerText.textContent = '!';
             hud.classList.add('pulsing');
-            setTimeout(() => startHuntPhase(totalSeconds || 300), 1500);
+            // savedRoundDuration = 900s, NÃO totalSeconds que era apenas o lockSecs
+            setTimeout(() => startHuntPhase(savedRoundDuration), 1500);
             break;
         }
 

@@ -86,19 +86,33 @@ local function startRound(numCops, lockSeconds)
 
     Citizen.Wait(2000)
 
+    -- Spawns únicos: embaralhar listas e distribuir
+    local copSpawnPool    = {}
+    local robberSpawnPool = {}
+    for _, v in ipairs(Config.copsSpawns)    do copSpawnPool[#copSpawnPool+1]       = v end
+    for _, v in ipairs(Config.robbersSpawns) do robberSpawnPool[#robberSpawnPool+1] = v end
+    shuffle(copSpawnPool)
+    shuffle(robberSpawnPool)
+
+    local copIdx, robberIdx = 1, 1
+
     for src in pairs(cops) do
+        local spawnPos = copSpawnPool[copIdx] or copSpawnPool[1]
+        copIdx = copIdx + 1
         local car = randomFrom(Config.policeCars)
         TriggerClientEvent('policia:assignRole', src, 'cop', car, lockSeconds,
-            Config.copsSpawn.pos, Config.policeWeapon, Config.policeAmmo)
+            spawnPos, Config.policeWeapon, Config.policeAmmo)
         Citizen.Wait(200)
         giveItem(src, Config.policeWeapon,  1, {ammo = Config.policeAmmo, quality = 100})
         giveItem(src, Config.handcuffsItem, 1, {})
     end
 
     for src in pairs(robbers) do
+        local spawnPos = robberSpawnPool[robberIdx] or robberSpawnPool[1]
+        robberIdx = robberIdx + 1
         local car = randomFrom(Config.robberCars)
         TriggerClientEvent('policia:assignRole', src, 'robber', car, lockSeconds,
-            Config.robbersSpawn.pos, Config.robberWeapon, Config.robberAmmo)
+            spawnPos, Config.robberWeapon, Config.robberAmmo)
         Citizen.Wait(200)
         giveItem(src, Config.robberWeapon, 1, {quality = 100})
     end
