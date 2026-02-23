@@ -185,6 +185,12 @@ AddEventHandler('policia:tryArrest', function()
     local src = source
     if not roundActive or not cops[src] then return end
 
+    -- Polícia deve estar fora do carro
+    if IsPedInAnyVehicle(GetPlayerPed(src), false) then
+        TriggerClientEvent('QBCore:Notify', src, '🚗 Sai do carro para poder algemar!', 'error', 3000)
+        return
+    end
+
     local copCoords = GetEntityCoords(GetPlayerPed(src))
 
     for robberSrc in pairs(robbers) do
@@ -192,6 +198,12 @@ AddEventHandler('policia:tryArrest', function()
         local dist = #(copCoords - robberCoords)
 
         if dist <= Config.arrestRange then
+            -- Ladrão também deve estar fora do carro
+            if IsPedInAnyVehicle(GetPlayerPed(robberSrc), false) then
+                TriggerClientEvent('QBCore:Notify', src, '🚗 O suspeito ainda está no carro!', 'error', 3000)
+                return
+            end
+
             local robberName = GetPlayerName(robberSrc)
             robbers[robberSrc] = nil
             livingRobbers = livingRobbers - 1
@@ -208,6 +220,7 @@ AddEventHandler('policia:tryArrest', function()
 
     TriggerClientEvent('QBCore:Notify', src, '❌ Nenhum suspeito ao alcance!', 'error', 3000)
 end)
+
 
 -- ── Evento: Ladrão morreu ─────────────────────────────────────
 

@@ -2,7 +2,7 @@ Config = {}
 
 -- ── TEMPORIZADORES ─────────────────────────────────────────
 Config.clueInterval        = 20     -- segundos entre pistas (coordenadas EXACTAS)
-Config.roundDuration       = 300    -- duração máxima da ronda (segundos)
+Config.roundDuration       = 900    -- duração máxima da ronda (15 minutos)
 Config.blipDuration        = 18     -- segundos que o blip fica no mapa
 Config.outOfBoundsWarnSecs = 15     -- tempo para voltar à zona antes de ser eliminado
 
