@@ -1,0 +1,143 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background: transparent;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* ── Container principal ───────────────── */
+#hud {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 18px 22px 20px;
+    border-radius: 18px;
+    background: rgba(10, 10, 20, 0.72);
+    backdrop-filter: blur(18px) saturate(1.8);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow:
+        0 8px 32px rgba(0,0,0,0.55),
+        inset 0 1px 0 rgba(255,255,255,0.06);
+    min-width: 165px;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+#hud.hidden {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.94);
+    pointer-events: none;
+}
+
+/* ── Badge de papel ────────────────────── */
+#role-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #fff;
+    transition: background 0.3s, border-color 0.3s;
+}
+
+body.cop #role-badge {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: rgba(59, 130, 246, 0.45);
+    color: #93c5fd;
+    text-shadow: 0 0 12px rgba(59,130,246,0.7);
+}
+
+body.robber #role-badge {
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fca5a5;
+    text-shadow: 0 0 12px rgba(239,68,68,0.7);
+}
+
+#role-icon { font-size: 16px; }
+
+/* ── Fase ──────────────────────────────── */
+#phase-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.45);
+    text-align: center;
+}
+
+/* ── Timer em anel ─────────────────────── */
+#timer-wrapper {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    margin: 4px 0;
+}
+
+.timer-ring {
+    width: 80px;
+    height: 80px;
+    transform: rotate(-90deg);
+}
+
+.ring-bg {
+    fill: none;
+    stroke: rgba(255,255,255,0.06);
+    stroke-width: 5;
+}
+
+.ring-fill {
+    fill: none;
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-dasharray: 213.63;   /* 2π × 34 */
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 1s linear, stroke 0.4s;
+}
+
+body.cop    .ring-fill { stroke: #3b82f6; }
+body.robber .ring-fill { stroke: #ef4444; }
+body:not(.cop):not(.robber) .ring-fill { stroke: #a855f7; }
+
+#timer-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: 0.02em;
+}
+
+/* ── Subtítulo ─────────────────────────── */
+#timer-sub {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+}
+
+/* ── Animação de pulse quando anel a zero ─ */
+@keyframes pulse-glow {
+    0%,100% { box-shadow: 0 8px 32px rgba(239,68,68,0.25), inset 0 1px 0 rgba(255,255,255,0.06); }
+    50%      { box-shadow: 0 8px 48px rgba(239,68,68,0.55), inset 0 1px 0 rgba(255,255,255,0.06); }
+}
+
+#hud.pulsing { animation: pulse-glow 1s ease-in-out infinite; }

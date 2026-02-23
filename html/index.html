@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Policia HUD</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div id="hud" class="hidden">
+        <!-- Papel do jogador -->
+        <div id="role-badge">
+            <span id="role-icon">🚓</span>
+            <span id="role-label">POLÍCIA</span>
+        </div>
+
+        <!-- Fase: preso ou em jogo -->
+        <div id="phase-label">A AGUARDAR LIBERTAÇÃO...</div>
+
+        <!-- Countdown principal -->
+        <div id="timer-wrapper">
+            <svg class="timer-ring" viewBox="0 0 80 80">
+                <circle class="ring-bg"   cx="40" cy="40" r="34" />
+                <circle class="ring-fill" cx="40" cy="40" r="34" id="ring-fill" />
+            </svg>
+            <span id="timer-text">--</span>
+        </div>
+
+        <!-- Subtítulo -->
+        <div id="timer-sub">TEMPO RESTANTE</div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
