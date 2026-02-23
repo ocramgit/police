@@ -3,19 +3,29 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local myRole           = nil
 local roundActive      = false
 local spawnedVehicle   = nil
-local spawnedPlate     = nil
 local tempBlips        = {}
 local zoneBlip         = nil
 local isFrozen         = false
 local outOfBoundsWarn  = false
 local lastPositions    = {}
 local zoneData         = nil
-local chaosEntities    = {}   -- todos os props/veículos/peds de caos
+local chaosEntities    = {}   -- props, peds e veículos de caos
+
+-- ── Modelos de rampas por tamanho ─────────────────────────────
+local RAMP_PROPS = {
+    small  = { 'prop_mp_ramp_02' },
+    medium = { 'prop_mp_ramp_03', 'prop_mp_ramp_02' },
+    large  = { 'prop_mp_ramp_06', 'prop_mp_ramp_03' },
+}
 
 -- ── Utilitários ──────────────────────────────────────────────
 
 local function notify(msg, msgType, dur)
     QBCore.Functions.Notify(msg, msgType or 'primary', dur or 7000)
+end
+
+local function randomFrom(tbl)
+    return tbl[math.random(#tbl)]
 end
 
 -- ── Upgrade de veículo ────────────────────────────────────────
@@ -26,8 +36,8 @@ local function upgradeVehicle(veh)
         local maxMod = GetNumVehicleMods(veh, modType) - 1
         if maxMod >= 0 then SetVehicleMod(veh, modType, maxMod, false) end
     end
-    ToggleVehicleMod(veh, 18, true)   -- Turbo
-    ToggleVehicleMod(veh, 22, true)   -- Xenon
+    ToggleVehicleMod(veh, 18, true)
+    ToggleVehicleMod(veh, 22, true)
     SetVehicleEngineHealth(veh, 1000.0)
     SetVehicleBodyHealth(veh, 1000.0)
     SetVehiclePetrolTankHealth(veh, 1000.0)
@@ -51,13 +61,11 @@ local function spawnVehicle(model, coords)
     local plate = 'JOGO' .. math.random(1000, 9999)
     SetVehicleNumberPlateText(veh, plate)
     SetModelAsNoLongerNeeded(hash)
-
     upgradeVehicle(veh)
 
     spawnedVehicle = veh
-    spawnedPlate   = plate
 
-    -- Desbloquear permanentemente (lock 0 = None, sem locks)
+    -- Manter desbloqueado (lock 0 = None, sem qualquer lock)
     Citizen.CreateThread(function()
         while roundActive do
             if DoesEntityExist(veh) then
@@ -67,7 +75,7 @@ local function spawnVehicle(model, coords)
         end
     end)
 
-    -- Dar chaves via qb-vehiclekeys (tenta ambas as versões)
+    -- Dar chaves via qb-vehiclekeys
     TriggerServerEvent('qb-vehiclekeys:server:AcquireVehicleKeys', plate)
     TriggerServerEvent('vehiclekeys:server:setVehicleOwner',       plate)
 
@@ -91,7 +99,7 @@ local function removeAllWeapons()
     RemoveAllPedWeapons(PlayerPedId(), true)
 end
 
--- ── Freeze (veículo + ped) ────────────────────────────────────
+-- ── Freeze ───────────────────────────────────────────────────
 
 local function freezePlayer(active)
     isFrozen = active
@@ -124,7 +132,6 @@ local function freezePlayer(active)
                 DisableControlAction(0, 59,  true)
                 DisableControlAction(0, 63,  true)
                 DisableControlAction(0, 75,  true)
-
                 local veh = spawnedVehicle
                 if veh and DoesEntityExist(veh) then
                     SetEntityVelocity(veh, 0.0, 0.0, 0.0)
@@ -132,7 +139,6 @@ local function freezePlayer(active)
                 end
                 Citizen.Wait(0)
             end
-
             if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
                 FreezeEntityPosition(spawnedVehicle, false)
                 SetVehicleEngineOn(spawnedVehicle, true, false, true)
@@ -157,7 +163,7 @@ local function removeZone()
     zoneData = nil
 end
 
--- ── Limpeza de tudo (caos + veículos + peds) ─────────────────
+-- ── Limpeza de caos ───────────────────────────────────────────
 
 local function cleanupChaos()
     for _, e in ipairs(chaosEntities) do
@@ -166,65 +172,82 @@ local function cleanupChaos()
     chaosEntities = {}
 end
 
--- ── ZONA DE CAOS (cidade toda) ────────────────────────────────
+-- ── Spawn de rampa individual (não-networked) ─────────────────
 
-local function spawnRamp(x, y, rampModels)
-    local model  = rampModels[math.random(#rampModels)]
-    local hash   = GetHashKey(model)
+local function spawnRamp(rx, ry, rz, rh, size)
+    local models   = RAMP_PROPS[size] or RAMP_PROPS.medium
+    local model    = randomFrom(models)
+    local hash     = GetHashKey(model)
+
     RequestModel(hash)
     local t = 0
-    while not HasModelLoaded(hash) and t < 20 do Citizen.Wait(100); t = t + 1 end
-    if not HasModelLoaded(hash) then return end
+    while not HasModelLoaded(hash) and t < 30 do Citizen.Wait(100); t = t + 1 end
+    if not HasModelLoaded(hash) then SetModelAsNoLongerNeeded(hash); return end
 
-    local found, gz = GetGroundZFor_3dCoord(x, y, 200.0, false)
-    if not found then gz = 30.0 end
+    -- Pedir colisão na área antes de spawnar
+    RequestCollisionAtCoord(rx, ry, rz)
+    Citizen.Wait(300)
 
-    local prop = CreateObject(hash, x, y, gz, true, false, false)
-    SetEntityHeading(prop, math.random(0, 359) * 1.0)
+    -- Tentar obter Z real do terreno
+    local found, gz = GetGroundZFor_3dCoord(rx, ry, rz + 50.0, false)
+    local finalZ = found and gz or rz
+
+    -- Criar objeto NÃO networked (false, false, false) para fiabilidade
+    local prop = CreateObject(hash, rx, ry, finalZ + 0.3, false, false, false)
+    if not DoesEntityExist(prop) then SetModelAsNoLongerNeeded(hash); return end
+
+    SetEntityHeading(prop, rh)
     PlaceObjectOnGroundProperly(prop)
     FreezeEntityPosition(prop, true)
     SetModelAsNoLongerNeeded(hash)
+
     chaosEntities[#chaosEntities + 1] = prop
 end
 
-local function spawnChaseVehicle(px, py)
-    local carModels = {'blista', 'issi2', 'sultan', 'banshee2', 'ruiner'}
-    local carModel  = carModels[math.random(#carModels)]
-    local carHash   = GetHashKey(carModel)
+-- ── Spawn de veículo de perseguição ───────────────────────────
+
+local chaseCarModels = {'blista', 'issi2', 'sultan', 'banshee2', 'ruiner2', 'dominator', 'elegy2'}
+
+local function spawnChaseVehicle()
+    local coords = GetEntityCoords(PlayerPedId())
+    local angle  = math.random() * math.pi * 2
+    local dist   = math.random(120, 220)
+    local px     = coords.x + math.cos(angle) * dist
+    local py     = coords.y + math.sin(angle) * dist
+
+    RequestCollisionAtCoord(px, py, coords.z)
+    Citizen.Wait(200)
+    local found, gz = GetGroundZFor_3dCoord(px, py, coords.z + 50.0, false)
+    if not found then return end
+
+    local carHash = GetHashKey(randomFrom(chaseCarModels))
     RequestModel(carHash)
     local t = 0
-    while not HasModelLoaded(carHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
-    if not HasModelLoaded(carHash) then return end
-
-    local found, gz = GetGroundZFor_3dCoord(px, py, 200.0, false)
-    if not found then gz = 30.0 end
+    while not HasModelLoaded(carHash) and t < 25 do Citizen.Wait(100); t = t + 1 end
+    if not HasModelLoaded(carHash) then SetModelAsNoLongerNeeded(carHash); return end
 
     local veh = CreateVehicle(carHash, px, py, gz + 0.5, math.random(0, 359) * 1.0, true, false)
     SetVehicleEngineOn(veh, true, false, true)
     SetModelAsNoLongerNeeded(carHash)
 
-    local driverHash = GetHashKey('a_m_y_downtown_01')
-    RequestModel(driverHash)
+    local dHash = GetHashKey('a_m_y_downtown_01')
+    RequestModel(dHash)
     t = 0
-    while not HasModelLoaded(driverHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
-
-    if HasModelLoaded(driverHash) then
-        local driver = CreatePedInsideVehicle(veh, 26, driverHash, -1, true, false)
-        TaskVehicleChase(driver, PlayerPedId())
+    while not HasModelLoaded(dHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
+    if HasModelLoaded(dHash) then
+        local driver = CreatePedInsideVehicle(veh, 26, dHash, -1, true, false)
         SetDriverAggressiveness(driver, 1.0)
         SetDriverAbility(driver, 1.0)
-        SetModelAsNoLongerNeeded(driverHash)
+        TaskVehicleChase(driver, PlayerPedId())
+        SetModelAsNoLongerNeeded(dHash)
         chaosEntities[#chaosEntities + 1] = driver
     end
     chaosEntities[#chaosEntities + 1] = veh
 end
 
-local function startChaosZone()
-    local rampModels = {
-        'prop_mp_ramp_02', 'prop_mp_ramp_03',
-        'prop_ramp_wooden_01', 'prop_mp_ramp_06',
-    }
+-- ── CAOS PRINCIPAL ────────────────────────────────────────────
 
+local function startChaosZone()
     -- 1. Tráfego extremo
     Citizen.CreateThread(function()
         while roundActive do
@@ -241,43 +264,27 @@ local function startChaosZone()
         SetPedDensityMultiplierThisFrame(1.0)
     end)
 
-    -- 2. 30+ rampas por toda a cidade
+    -- 2. Spawnar todas as rampas do config (dentro da zona)
     Citizen.CreateThread(function()
-        -- Centro da cidade + pontos dispersos
-        local cityPoints = {
-            {200, -900}, {0, -600}, {400, -600}, {-400, -600},
-            {200, -500}, {600, -800}, {-600, -800}, {100, -1100},
-            {800, -400}, {-800, -400}, {1000, -700}, {-1000, -700},
-            {300, -1300}, {-300, -1300}, {600, -1500}, {-600, -1500},
-            {900, -1200}, {-900, -1200}, {200, -1700}, {-200, -1700},
-            {500, -1900}, {0, -1900}, {1200, -900}, {-1200, -900},
-            {1400, -500}, {-1400, -500}, {700, -200}, {-700, -200},
-            {1600, -1100}, {-1600, -1100}, {400, -2000}, {-400, -2000},
-            {1100, -1500}, {-1100, -1500}, {0, -400},
-        }
-
-        for _, pt in ipairs(cityPoints) do
-            spawnRamp(pt[1], pt[2], rampModels)
-            spawnRamp(pt[1] + math.random(-80, 80), pt[2] + math.random(-80, 80), rampModels)
-            Citizen.Wait(300)
+        for _, r in ipairs(Config.rampPositions) do
+            spawnRamp(r[1], r[2], r[3], r[4], r[5])
+            Citizen.Wait(150)   -- espaçar para não crashar
         end
     end)
 
-    -- 3. Veículos a perseguir o jogador (periódico)
+    -- 3. Veículos de perseguição periódicos
+    --    Ladrões recebem MUITO mais carros, polícias recebem menos
     Citizen.CreateThread(function()
         Citizen.Wait(5000)
-        local wave = 0
-        while roundActive do
-            wave = wave + 1
-            local coords = GetEntityCoords(PlayerPedId())
-            local angle  = math.random() * math.pi * 2
-            local dist   = math.random(100, 250)
-            local px = coords.x + math.cos(angle) * dist
-            local py = coords.y + math.sin(angle) * dist
-            spawnChaseVehicle(px, py)
+        local interval = (myRole == 'robber') and 12000 or 30000   -- 12s ladrão / 30s polícia
+        local maxCars  = (myRole == 'robber') and 3       or 1     -- 3 carros de uma vez vs 1
 
-            -- Nova vaga a cada 25s
-            Citizen.Wait(25000)
+        while roundActive do
+            for _ = 1, maxCars do
+                spawnChaseVehicle()
+                Citizen.Wait(1000)
+            end
+            Citizen.Wait(interval)
         end
     end)
 end
@@ -333,10 +340,8 @@ local function startProximityCheck()
         while roundActive do
             Citizen.Wait(2000)
             if not roundActive or #lastPositions == 0 then goto continue end
-
             local myCoords = GetEntityCoords(PlayerPedId())
             local closest  = 99999
-
             for _, pos in ipairs(lastPositions) do
                 local isEnemy = (myRole == 'cop' and pos.role == 'robber')
                              or (myRole == 'robber' and pos.role == 'cop')
@@ -345,16 +350,9 @@ local function startProximityCheck()
                     if d < closest then closest = d end
                 end
             end
-
-            if closest < 30 then
-                SendNUIMessage({ action = 'danger', level = 2 })
-                notify('🚨 INIMIGO MUITO PRÓXIMO! (~' .. math.floor(closest) .. 'm)', 'error', 2500)
-            elseif closest < Config.alertRange then
-                SendNUIMessage({ action = 'danger', level = 1 })
-            else
-                SendNUIMessage({ action = 'danger', level = 0 })
-            end
-
+            if     closest < 30             then SendNUIMessage({ action = 'danger', level = 2 }); notify('🚨 INIMIGO MUITO PRÓXIMO! (~' .. math.floor(closest) .. 'm)', 'error', 2500)
+            elseif closest < Config.alertRange then SendNUIMessage({ action = 'danger', level = 1 })
+            else                                  SendNUIMessage({ action = 'danger', level = 0 }) end
             ::continue::
         end
         SendNUIMessage({ action = 'danger', level = 0 })
@@ -368,37 +366,26 @@ local function startOOBCheck()
         while roundActive do
             Citizen.Wait(3000)
             if not roundActive or not zoneData then goto next end
-
             local coords = GetEntityCoords(PlayerPedId())
             local dist   = #(vector3(coords.x, coords.y, coords.z) - vector3(zoneData.x, zoneData.y, zoneData.z))
-
             if dist > zoneData.radius then
                 if not outOfBoundsWarn then
                     outOfBoundsWarn = true
                     notify(('⚠️ FORA DA ZONA! Volta em %ds!'):format(Config.outOfBoundsWarnSecs), 'error', 6000)
-
                     Citizen.CreateThread(function()
                         local t = Config.outOfBoundsWarnSecs
                         while t > 0 and roundActive and outOfBoundsWarn do
-                            Citizen.Wait(1000)
-                            t = t - 1
+                            Citizen.Wait(1000); t = t - 1
                             local c = GetEntityCoords(PlayerPedId())
                             local d = #(vector3(c.x, c.y, c.z) - vector3(zoneData.x, zoneData.y, zoneData.z))
-                            if d <= zoneData.radius then
-                                outOfBoundsWarn = false
-                                notify('✅ De volta à zona!', 'success', 3000)
-                                return
-                            end
+                            if d <= zoneData.radius then outOfBoundsWarn = false; notify('✅ De volta à zona!', 'success', 3000); return end
                         end
-                        if roundActive and outOfBoundsWarn then
-                            TriggerServerEvent('policia:outOfBounds')
-                        end
+                        if roundActive and outOfBoundsWarn then TriggerServerEvent('policia:outOfBounds') end
                     end)
                 end
             else
                 outOfBoundsWarn = false
             end
-
             ::next::
         end
     end)
@@ -410,13 +397,12 @@ RegisterKeyMapping('policiaarrestar', 'Algemar Suspeito', 'keyboard', 'g')
 RegisterCommand('policiaarrestar', function()
     if myRole ~= 'cop' or not roundActive or isFrozen then return end
     if IsPedInAnyVehicle(PlayerPedId(), false) then
-        notify('🚗 Sai do carro para algemar!', 'error', 3000)
-        return
+        notify('🚗 Sai do carro para algemar!', 'error', 3000); return
     end
     TriggerServerEvent('policia:tryArrest')
 end, false)
 
--- ── Registo de eventos de rede ────────────────────────────────
+-- ── Registo de eventos ────────────────────────────────────────
 
 RegisterNetEvent('policia:setupZone')
 RegisterNetEvent('policia:assignRole')
@@ -425,7 +411,7 @@ RegisterNetEvent('policia:sendClue')
 RegisterNetEvent('policia:endRound')
 RegisterNetEvent('policia:youWereArrested')
 
--- ── Função de reset total ─────────────────────────────────────
+-- ── Reset completo ────────────────────────────────────────────
 
 local function fullReset()
     roundActive     = false
@@ -437,7 +423,7 @@ local function fullReset()
     freezePlayer(false)
     closeNUI()
     removeZone()
-    cleanupChaos()
+    cleanupChaos()   -- apaga todas as rampas, carros e peds de caos
 
     for _, b in ipairs(tempBlips) do
         if DoesBlipExist(b) then RemoveBlip(b) end
@@ -447,11 +433,10 @@ local function fullReset()
     if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
         DeleteEntity(spawnedVehicle); spawnedVehicle = nil
     end
-    spawnedPlate = nil
     removeAllWeapons()
 end
 
--- ── Handlers de eventos ───────────────────────────────────────
+-- ── Handlers ─────────────────────────────────────────────────
 
 AddEventHandler('policia:setupZone', function(x, y, z, radius)
     showZone(x, y, z, radius)
@@ -479,22 +464,23 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
     giveWeaponNow(weapon, ammo)
 
     if role == 'cop' then
-        notify('🚓 És POLÍCIA! Preso ' .. lockSeconds .. 's. Depois: sai do carro + G = Algemar.', 'error')
+        notify('🚓 POLÍCIA! Preso ' .. lockSeconds .. 's. Depois: sai do carro + G = Algemar.', 'error')
         freezePlayer(true)
         openNUI('cop', lockSeconds, Config.roundDuration)
     else
-        notify('🔪 És LADRÃO! As polícias saem em ' .. lockSeconds .. 's. FOGE!', 'warning')
+        notify('🔪 LADRÃO! Polícias saem em ' .. lockSeconds .. 's. FOGE! Há carros a perseguir-te!', 'warning')
         openNUI('robber', lockSeconds, Config.roundDuration)
     end
 
     startProximityCheck()
     startOOBCheck()
 
+    -- Iniciar caos após 5s
     Citizen.CreateThread(function()
-        Citizen.Wait(8000)
+        Citizen.Wait(5000)
         if roundActive then
             startChaosZone()
-            notify('🔥 CAOS ACTIVADO! Carros agressivos e rampas por toda a cidade!', 'warning', 5000)
+            notify('🔥 CAOS: ' .. #Config.rampPositions .. ' rampas activadas! Carros agressivos em patrulha!', 'warning', 6000)
         end
     end)
 end)
@@ -511,7 +497,7 @@ AddEventHandler('policia:sendClue', function(positions, blipDuration, aliveCount
 end)
 
 AddEventHandler('policia:youWereArrested', function()
-    notify('🔒 Foste APANHADO! Ronda terminada para ti.', 'error')
+    notify('🔒 Foste APANHADO!', 'error')
     fullReset()
 end)
 
