@@ -195,26 +195,11 @@ end
 RegisterCommand('comecarpolicia', function(source, args, rawCommand)
     local isConsole = (source == 0)
 
-    -- Verificar permissão in-game
-    if not isConsole then
-        local player = QBCore.Functions.GetPlayer(source)
-        if not player then return end
-        local group = player.PlayerData.permission
-        local allowed = false
-        for _, g in ipairs(Config.allowedGroups) do
-            if g == group then allowed = true; break end
-        end
-        if not allowed then
-            TriggerClientEvent('QBCore:Notify', source, 'Sem permissão para usar este comando.', 'error')
-            return
-        end
-    end
-
-    local numCops    = tonumber(args[1])
-    local lockSecs   = tonumber(args[2])
+    local numCops  = tonumber(args[1])
+    local lockSecs = tonumber(args[2])
 
     if not numCops or not lockSecs or numCops < 1 or lockSecs < 1 then
-        local msg = 'Uso correcto: comecarpolicia <nPolicias> <segundos>'
+        local msg = 'Uso correcto: /comecarpolicia <nPolicias> <segundos>'
         if isConsole then print('[POLICIA] ' .. msg)
         else TriggerClientEvent('QBCore:Notify', source, msg, 'error') end
         return
@@ -228,23 +213,9 @@ RegisterCommand('comecarpolicia', function(source, args, rawCommand)
     end
 
     startRound(numCops, lockSecs)
-end, false) -- false = não restringir a admins automaticamente (gerimos nós)
+end, false)
 
 -- Comando para terminar manualmente (consola ou admin)
 RegisterCommand('terminarpolicia', function(source, args, rawCommand)
-    local isConsole = (source == 0)
-    if not isConsole then
-        local player = QBCore.Functions.GetPlayer(source)
-        if not player then return end
-        local group = player.PlayerData.permission
-        local allowed = false
-        for _, g in ipairs(Config.allowedGroups) do
-            if g == group then allowed = true; break end
-        end
-        if not allowed then
-            TriggerClientEvent('QBCore:Notify', source, 'Sem permissão.', 'error')
-            return
-        end
-    end
-    endRound('Ronda cancelada pelo administrador.')
+    endRound('Ronda cancelada.')
 end, false)
