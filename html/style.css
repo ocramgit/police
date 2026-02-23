@@ -1,6 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
 
 body {
     font-family: 'Outfit', sans-serif;
@@ -22,13 +28,12 @@ body {
     gap: 6px;
     padding: 18px 22px 20px;
     border-radius: 18px;
-    background: rgba(10, 10, 20, 0.72);
+    background: rgba(10, 10, 20, 0.75);
     backdrop-filter: blur(18px) saturate(1.8);
-    border: 1px solid rgba(255,255,255,0.08);
-    box-shadow:
-        0 8px 32px rgba(0,0,0,0.55),
-        inset 0 1px 0 rgba(255,255,255,0.06);
-    min-width: 165px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    min-width: 170px;
     transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
@@ -49,8 +54,8 @@ body {
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: #fff;
     transition: background 0.3s, border-color 0.3s;
 }
@@ -59,17 +64,19 @@ body.cop #role-badge {
     background: rgba(59, 130, 246, 0.18);
     border-color: rgba(59, 130, 246, 0.45);
     color: #93c5fd;
-    text-shadow: 0 0 12px rgba(59,130,246,0.7);
+    text-shadow: 0 0 12px rgba(59, 130, 246, 0.7);
 }
 
 body.robber #role-badge {
     background: rgba(239, 68, 68, 0.18);
     border-color: rgba(239, 68, 68, 0.45);
     color: #fca5a5;
-    text-shadow: 0 0 12px rgba(239,68,68,0.7);
+    text-shadow: 0 0 12px rgba(239, 68, 68, 0.7);
 }
 
-#role-icon { font-size: 16px; }
+#role-icon {
+    font-size: 16px;
+}
 
 /* ── Fase ──────────────────────────────── */
 #phase-label {
@@ -77,8 +84,31 @@ body.robber #role-badge {
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.45);
+    color: rgba(255, 255, 255, 0.45);
     text-align: center;
+}
+
+/* ── Contagem de ladrões ───────────────── */
+#robber-count {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+#robber-count.hidden {
+    display: none;
+}
+
+#robber-num {
+    font-size: 14px;
+    font-weight: 800;
 }
 
 /* ── Timer em anel ─────────────────────── */
@@ -97,7 +127,7 @@ body.robber #role-badge {
 
 .ring-bg {
     fill: none;
-    stroke: rgba(255,255,255,0.06);
+    stroke: rgba(255, 255, 255, 0.06);
     stroke-width: 5;
 }
 
@@ -105,14 +135,22 @@ body.robber #role-badge {
     fill: none;
     stroke-width: 5;
     stroke-linecap: round;
-    stroke-dasharray: 213.63;   /* 2π × 34 */
+    stroke-dasharray: 213.63;
     stroke-dashoffset: 0;
     transition: stroke-dashoffset 1s linear, stroke 0.4s;
 }
 
-body.cop    .ring-fill { stroke: #3b82f6; }
-body.robber .ring-fill { stroke: #ef4444; }
-body:not(.cop):not(.robber) .ring-fill { stroke: #a855f7; }
+body.cop .ring-fill {
+    stroke: #3b82f6;
+}
+
+body.robber .ring-fill {
+    stroke: #ef4444;
+}
+
+body:not(.cop):not(.robber) .ring-fill {
+    stroke: #a855f7;
+}
 
 #timer-text {
     position: absolute;
@@ -131,13 +169,98 @@ body:not(.cop):not(.robber) .ring-fill { stroke: #a855f7; }
     font-weight: 600;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.3);
+    color: rgba(255, 255, 255, 0.3);
 }
 
-/* ── Animação de pulse quando anel a zero ─ */
+/* ── Indicador de perigo ───────────────── */
+#danger-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition: all 0.3s;
+}
+
+#danger-bar.hidden {
+    display: none;
+}
+
+#danger-bar.level-1 {
+    background: rgba(251, 191, 36, 0.18);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    color: #fde68a;
+}
+
+#danger-bar.level-2 {
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.6);
+    color: #fca5a5;
+}
+
+#danger-icon {
+    font-size: 13px;
+}
+
+/* ── Hint de tecla ─────────────────────── */
+#action-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 0.06em;
+}
+
+#action-hint.hidden {
+    display: none;
+}
+
+kbd {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 10px;
+    font-weight: 800;
+    color: #fff;
+}
+
+/* ── Animação de pulse ─────────────────── */
 @keyframes pulse-glow {
-    0%,100% { box-shadow: 0 8px 32px rgba(239,68,68,0.25), inset 0 1px 0 rgba(255,255,255,0.06); }
-    50%      { box-shadow: 0 8px 48px rgba(239,68,68,0.55), inset 0 1px 0 rgba(255,255,255,0.06); }
+
+    0%,
+    100% {
+        box-shadow: 0 8px 32px rgba(239, 68, 68, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    50% {
+        box-shadow: 0 8px 48px rgba(239, 68, 68, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
 }
 
-#hud.pulsing { animation: pulse-glow 1s ease-in-out infinite; }
+#hud.pulsing {
+    animation: pulse-glow 1s ease-in-out infinite;
+}
+
+@keyframes danger-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+#danger-bar.level-2 {
+    animation: danger-pulse 0.6s ease-in-out infinite;
+}

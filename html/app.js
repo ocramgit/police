@@ -1,23 +1,26 @@
 /* ──────────────────────────────────────────────
    Policia Minigame – NUI Controller
-   Comunica com client/main.lua via postMessage
    ────────────────────────────────────────────── */
 
-const hud         = document.getElementById('hud');
-const roleIcon    = document.getElementById('role-icon');
-const roleLabel   = document.getElementById('role-label');
-const phaseLabel  = document.getElementById('phase-label');
-const timerText   = document.getElementById('timer-text');
-const timerSub    = document.getElementById('timer-sub');
-const ringFill    = document.getElementById('ring-fill');
+const hud = document.getElementById('hud');
+const roleIcon = document.getElementById('role-icon');
+const roleLabel = document.getElementById('role-label');
+const phaseLabel = document.getElementById('phase-label');
+const timerText = document.getElementById('timer-text');
+const timerSub = document.getElementById('timer-sub');
+const ringFill = document.getElementById('ring-fill');
+const robberCount = document.getElementById('robber-count');
+const robberNum = document.getElementById('robber-num');
+const dangerBar = document.getElementById('danger-bar');
+const dangerText = document.getElementById('danger-text');
+const actionHint = document.getElementById('action-hint');
 
-const CIRCUMFERENCE = 213.63; // 2π × 34 (raio do SVG)
+const CIRCUMFERENCE = 213.63;
 
-let totalSeconds   = 0;
+let totalSeconds = 0;
 let currentSeconds = 0;
-let isLockPhase    = false;
-let lockSeconds    = 0;
-let intervalId     = null;
+let intervalId = null;
+let currentRole = null;
 
 // ── Utilitários ──────────────────────────────
 
@@ -31,8 +34,7 @@ function formatTime(secs) {
 
 function setRingProgress(remaining, total) {
     if (total <= 0) { ringFill.style.strokeDashoffset = 0; return; }
-    const ratio  = remaining / total;
-    const offset = CIRCUMFERENCE * (1 - ratio);
+    const offset = CIRCUMFERENCE * (1 - remaining / total);
     ringFill.style.strokeDashoffset = offset;
 }
 
@@ -40,114 +42,122 @@ function stopTimer() {
     if (intervalId) { clearInterval(intervalId); intervalId = null; }
 }
 
-// ── Fases ────────────────────────────────────
+// ── Temporizador ──────────────────────────────
 
-function startLockPhase(secs) {
+function startTimer(seconds, sub, onEnd) {
     stopTimer();
-    isLockPhase    = true;
-    currentSeconds = secs;
-    totalSeconds   = secs;
-
-    phaseLabel.textContent = 'PRESO — AGUARDA LIBERTAÇÃO';
-    timerSub.textContent   = 'TEMPO ATÉ SER LIBERTADO';
+    currentSeconds = seconds;
+    totalSeconds = seconds;
+    timerSub.textContent = sub;
+    timerText.textContent = formatTime(currentSeconds);
+    setRingProgress(currentSeconds, totalSeconds);
     hud.classList.remove('pulsing');
 
     intervalId = setInterval(() => {
         currentSeconds--;
-        timerText.textContent = formatTime(currentSeconds);
-        setRingProgress(currentSeconds, totalSeconds);
+        timerText.textContent = formatTime(Math.max(currentSeconds, 0));
+        setRingProgress(Math.max(currentSeconds, 0), totalSeconds);
 
         if (currentSeconds <= 10) hud.classList.add('pulsing');
         if (currentSeconds <= 0) {
             stopTimer();
-            transitionToHuntPhase();
+            if (onEnd) onEnd();
         }
     }, 1000);
-
-    timerText.textContent = formatTime(currentSeconds);
-    setRingProgress(currentSeconds, totalSeconds);
 }
 
-function startHuntPhase(roundDuration) {
-    stopTimer();
-    isLockPhase    = false;
-    currentSeconds = roundDuration;
-    totalSeconds   = roundDuration;
+function startLockPhase(lockSecs, roundDuration) {
+    startTimer(lockSecs, 'TEMPO ATÉ SER LIBERTADO', () => {
+        phaseLabel.textContent = '⚠️ LIBERTO! VAI À CAÇA!';
+        timerText.textContent = '!';
+        setTimeout(() => startHuntPhase(roundDuration), 1500);
+    });
+    phaseLabel.textContent = 'PRESO — AGUARDA LIBERTAÇÃO';
+}
 
+function startHuntPhase(duration) {
+    startTimer(duration, 'TEMPO RESTANTE DA RONDA', () => { });
     phaseLabel.textContent = 'RONDA EM CURSO!';
-    timerSub.textContent   = 'TEMPO RESTANTE DA RONDA';
-    hud.classList.remove('pulsing');
-
-    intervalId = setInterval(() => {
-        currentSeconds--;
-        timerText.textContent = formatTime(currentSeconds);
-        setRingProgress(currentSeconds, totalSeconds);
-
-        if (currentSeconds <= 30) hud.classList.add('pulsing');
-        if (currentSeconds <= 0) stopTimer();
-    }, 1000);
-
-    timerText.textContent = formatTime(currentSeconds);
-    setRingProgress(currentSeconds, totalSeconds);
 }
 
-function transitionToHuntPhase() {
-    // Chamado automaticamente quando o lockdown termina (polícia)
-    phaseLabel.textContent = '⚠️ LIBERTO! VAI À CAÇA!';
-    timerText.textContent  = '!';
-    hud.classList.add('pulsing');
-    setTimeout(() => {
-        startHuntPhase(totalSeconds > 0 ? totalSeconds : 300);
-    }, 2000);
+// ── Perigo ────────────────────────────────────
+
+function setDanger(level) {
+    dangerBar.classList.remove('hidden', 'level-1', 'level-2');
+    if (level === 0) {
+        dangerBar.classList.add('hidden');
+    } else if (level === 1) {
+        dangerBar.classList.add('level-1');
+        dangerText.textContent = 'INIMIGO PRÓXIMO';
+        dangerBar.classList.remove('hidden');
+    } else {
+        dangerBar.classList.add('level-2');
+        dangerText.textContent = 'PERIGO IMEDIATO!';
+        dangerBar.classList.remove('hidden');
+    }
 }
 
-// ── Listener de mensagens do Lua ─────────────
+// ── Mensagens do Lua ──────────────────────────
 
-window.addEventListener('message', function(event) {
+window.addEventListener('message', function (event) {
     const data = event.data;
     if (!data || !data.action) return;
 
     switch (data.action) {
 
         case 'open': {
-            // Limpar classes de papel anteriores
+            currentRole = data.role;
             document.body.classList.remove('cop', 'robber');
+            document.body.classList.add(data.role);
 
             if (data.role === 'cop') {
-                document.body.classList.add('cop');
-                roleIcon.textContent  = '🚓';
+                roleIcon.textContent = '🚓';
                 roleLabel.textContent = 'POLÍCIA';
-
+                actionHint.classList.remove('hidden');
                 if (data.lockSeconds > 0) {
-                    startLockPhase(data.lockSeconds);
+                    startLockPhase(data.lockSeconds, data.roundDuration);
                 } else {
                     startHuntPhase(data.roundDuration);
                 }
             } else {
-                document.body.classList.add('robber');
-                roleIcon.textContent  = '🔪';
+                roleIcon.textContent = '🔪';
                 roleLabel.textContent = 'LADRÃO';
+                actionHint.classList.add('hidden');
                 startHuntPhase(data.roundDuration);
             }
 
+            robberCount.classList.remove('hidden');
             hud.classList.remove('hidden');
             break;
         }
 
         case 'released': {
-            // Polícia libertada — mostrar mensagem e ir para fase de caça
             stopTimer();
             phaseLabel.textContent = '🚨 LIBERTO! À CAÇA!';
-            timerText.textContent  = '!';
+            timerText.textContent = '!';
             hud.classList.add('pulsing');
             setTimeout(() => startHuntPhase(totalSeconds || 300), 1500);
             break;
         }
 
+        case 'updateRobbers': {
+            robberNum.textContent = data.count;
+            break;
+        }
+
+        case 'danger': {
+            setDanger(data.level || 0);
+            break;
+        }
+
         case 'close': {
             stopTimer();
+            setDanger(0);
             hud.classList.add('hidden');
             document.body.classList.remove('cop', 'robber');
+            robberCount.classList.add('hidden');
+            actionHint.classList.add('hidden');
+            currentRole = null;
             break;
         }
     }

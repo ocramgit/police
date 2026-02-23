@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt">
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Policia HUD</title>
     <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
     <div id="hud" class="hidden">
         <!-- Papel do jogador -->
@@ -17,10 +19,17 @@
         <!-- Fase: preso ou em jogo -->
         <div id="phase-label">A AGUARDAR LIBERTAÇÃO...</div>
 
+        <!-- Contagem de ladrões -->
+        <div id="robber-count" class="hidden">
+            <span id="robber-icon">🔪</span>
+            <span id="robber-num">--</span>
+            <span id="robber-text">ladrão(ões)</span>
+        </div>
+
         <!-- Countdown principal -->
         <div id="timer-wrapper">
             <svg class="timer-ring" viewBox="0 0 80 80">
-                <circle class="ring-bg"   cx="40" cy="40" r="34" />
+                <circle class="ring-bg" cx="40" cy="40" r="34" />
                 <circle class="ring-fill" cx="40" cy="40" r="34" id="ring-fill" />
             </svg>
             <span id="timer-text">--</span>
@@ -28,8 +37,20 @@
 
         <!-- Subtítulo -->
         <div id="timer-sub">TEMPO RESTANTE</div>
+
+        <!-- Indicador de perigo -->
+        <div id="danger-bar" class="hidden">
+            <div id="danger-icon">⚠️</div>
+            <div id="danger-text">INIMIGO PRÓXIMO</div>
+        </div>
+
+        <!-- Tecla de Acção (cop only) -->
+        <div id="action-hint" class="hidden">
+            <kbd>G</kbd> Algemar
+        </div>
     </div>
 
     <script src="app.js"></script>
 </body>
+
 </html>

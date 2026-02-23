@@ -1,61 +1,45 @@
 Config = {}
 
--- ──────────────────────────────────────────────
---  TEMPORIZADORES
--- ──────────────────────────────────────────────
-Config.clueInterval  = 30    -- segundos entre cada pista de localização
-Config.roundDuration = 300   -- duração máxima da ronda em segundos (5 min)
-Config.blipDuration  = 10    -- segundos que o blip temporário fica visível no mapa
-Config.clueRadius    = 150.0 -- imprecisão das pistas em metros (raio aleatório)
+-- ── TEMPORIZADORES ─────────────────────────────────────────
+Config.clueInterval        = 20     -- segundos entre pistas (coordenadas EXACTAS)
+Config.roundDuration       = 300    -- duração máxima da ronda (segundos)
+Config.blipDuration        = 18     -- segundos que o blip fica no mapa
+Config.outOfBoundsWarnSecs = 15     -- tempo para voltar à zona antes de ser eliminado
 
--- ──────────────────────────────────────────────
---  SPAWNS
--- ──────────────────────────────────────────────
--- Polícias ficam presos neste local durante os segundos definidos
-Config.copsSpawn = {
-    pos    = vector4(428.34, -984.94, 29.69, 270.0), -- Mission Row PD
-    label  = 'Esquadra Mission Row',
+-- ── ZONA DE JOGO ────────────────────────────────────────────
+-- Circle visível no mapa. Ambos os spawns estão dentro desta zona.
+Config.zone = {
+    x      = 200.0,
+    y      = -900.0,
+    z      = 30.0,
+    radius = 1100.0,  -- metros
 }
 
--- Ladrões nascem aqui e podem fugir imediatamente
+-- ── SPAWNS ──────────────────────────────────────────────────
+Config.copsSpawn = {
+    pos   = vector4(428.34, -984.94, 29.69, 270.0),  -- Mission Row PD
+    label = 'Esquadra Mission Row',
+}
 Config.robbersSpawn = {
-    pos   = vector4(-201.72, -1502.84, 31.08, 0.0), -- Terminal Portuário
+    pos   = vector4(-201.72, -1502.84, 31.08, 0.0),  -- Terminal Portuário
     label = 'Terminal Portuário',
 }
 
--- ──────────────────────────────────────────────
---  VEÍCULOS
--- ──────────────────────────────────────────────
-Config.policeCars = {
-    'police',   -- Vapid Stanier (Police)
-    'police2',  -- Vapid Interceptor
-    'police3',  -- Vapid Police Cruiser
-}
+-- ── VEÍCULOS ────────────────────────────────────────────────
+Config.policeCars = { 'police', 'police2', 'police3' }
+Config.robberCars = { 'blista', 'issi2', 'prairie', 'rhapsody', 'ingot' }
 
-Config.robberCars = {
-    'blista',   -- Declasse Blista
-    'issi2',    -- Weeny Issi Classic
-    'prairie',  -- Declasse Prairie
-    'rhapsody', -- Declasse Rhapsody
-    'ingot',    -- Vulcar Ingot
-}
+-- ── ARMAS (nomes de item QBCore) ─────────────────────────────
+Config.policeWeapon  = 'weapon_pistol'
+Config.policeAmmo    = 60
+Config.robberWeapon  = 'weapon_knife'
+Config.robberAmmo    = 0
+Config.handcuffsItem = 'handcuffs'
 
--- ──────────────────────────────────────────────
---  ARMAS E MUNIÇÕES
--- ──────────────────────────────────────────────
-Config.policeWeapon = 'WEAPON_PISTOL'
-Config.policeAmmo   = 60
+-- ── MECÂNICAS ────────────────────────────────────────────────
+Config.arrestRange = 3.5    -- metros para poder algemar (tecla G)
+Config.alertRange  = 80.0   -- metros para alerta de proximidade no HUD
 
-Config.robberWeapon = 'WEAPON_KNIFE'
-Config.robberAmmo   = 1   -- faca não precisa de ammo mas é boa prática definir
-
--- ──────────────────────────────────────────────
---  PERMISSÕES DE COMANDO
--- ──────────────────────────────────────────────
--- Grupos que podem usar /comecarpolicia (além da consola do servidor)
+-- ── PERMISSÕES ───────────────────────────────────────────────
 Config.allowedGroups = { 'god', 'admin' }
-
--- ──────────────────────────────────────────────
---  MÍNIMO DE JOGADORES
--- ──────────────────────────────────────────────
-Config.minPlayers = 2  -- precisa de pelo menos 2 jogadores para iniciar
+Config.minPlayers    = 2
