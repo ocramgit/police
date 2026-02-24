@@ -33,7 +33,7 @@ end
 
 -- ── Upgrade de veículo ────────────────────────────────────────
 
-local function upgradeVehicle(veh)
+local function upgradeVehicle(veh, isCop)
     SetVehicleModKit(veh, 0)
     for modType = 0, 49 do
         local maxMod = GetNumVehicleMods(veh, modType) - 1
@@ -44,10 +44,18 @@ local function upgradeVehicle(veh)
     SetVehicleEngineHealth(veh, 1000.0)
     SetVehicleBodyHealth(veh, 1000.0)
     SetVehiclePetrolTankHealth(veh, 1000.0)
-    SetVehicleWheelsCanBreak(veh, false)
-    SetVehicleTyresCanBurst(veh, false)  -- Pneus invencíveis
+
+    if isCop then
+        SetVehicleWheelsCanBreak(veh, false)
+        SetVehicleTyresCanBurst(veh, false)  -- Cops: Pneus invencíveis
+    else
+        SetVehicleWheelsCanBreak(veh, true)
+        SetVehicleTyresCanBurst(veh, true)   -- Ladrão: Pneus normais
+    end
+    
     SetVehicleFixed(veh)
 end
+
 
 -- ── Spawn de veículo ──────────────────────────────────────────
 
@@ -65,7 +73,7 @@ local function spawnVehicle(model, coords)
     local plate = 'JOGO' .. math.random(1000, 9999)
     SetVehicleNumberPlateText(veh, plate)
     SetModelAsNoLongerNeeded(hash)
-    upgradeVehicle(veh)
+    upgradeVehicle(veh, myRole == 'cop')
 
     spawnedVehicle = veh
 
@@ -1791,9 +1799,11 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
 
         local spawnX = targetCoords and targetCoords.x or myC.x
         local spawnY = targetCoords and targetCoords.y or myC.y
-        local spawnZ = (targetCoords and targetCoords.z or myC.z) + (heliAlt or 80)
+        -- Heli precisa de bastante altura para não nascer no chão e explodir
+        local spawnZ = (targetCoords and targetCoords.z or myC.z) + (heliAlt or 120.0)
 
-        local heli = CreateVehicle(hHash, spawnX + 200.0, spawnY + 200.0, spawnZ, 0.0, true, false)
+        -- Spawna a 150m de distância para o ver aproximar-se
+        local heli = CreateVehicle(hHash, spawnX + 150.0, spawnY + 150.0, spawnZ, 0.0, true, false)
         SetVehicleEngineOn(heli, true, false, true)
         SetHeliBladesFullSpeed(heli)
         SetModelAsNoLongerNeeded(hHash)
