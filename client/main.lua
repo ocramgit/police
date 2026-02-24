@@ -171,42 +171,42 @@ local function startZoneBarrier()
 
     Citizen.CreateThread(function()
         while barrierActive do
-            if not zoneData then Citizen.Wait(500); goto nextFrame end
+            if not zoneData then
+                Citizen.Wait(500)
+            else
+                local cx, cy, cz = zoneData.x, zoneData.y, zoneData.z
+                local r           = zoneData.radius
+                local myPos       = GetEntityCoords(PlayerPedId())
+                local dist2d      = math.sqrt((myPos.x - cx)^2 + (myPos.y - cy)^2)
 
-            local cx, cy, cz = zoneData.x, zoneData.y, zoneData.z
-            local r           = zoneData.radius
-            local myPos       = GetEntityCoords(PlayerPedId())
-            local dist2d      = math.sqrt((myPos.x - cx)^2 + (myPos.y - cy)^2)
+                -- Só renderizar pilares próximos do jogador para poupar resources
+                for i = 0, STEPS - 1 do
+                    local angle = i * STEP_RAD
+                    local px    = cx + math.cos(angle) * r
+                    local py    = cy + math.sin(angle) * r
 
-            -- Só renderizar pilares próximos do jogador (raio de 300m ao redor do jogador)
-            for i = 0, STEPS - 1 do
-                local angle = i * STEP_RAD
-                local px    = cx + math.cos(angle) * r
-                local py    = cy + math.sin(angle) * r
+                    local distToMarker = math.sqrt((myPos.x - px)^2 + (myPos.y - py)^2)
+                    if distToMarker < 350.0 then
+                        -- Cor: laranja dentro da zona, vermelho fora
+                        local inside = dist2d <= r
+                        local r_c = inside and 255 or 220
+                        local g_c = inside and 100 or  30
+                        local b_c = inside and  20 or  20
+                        local a_c = inside and 120 or 180
 
-                -- Só desenhar se estiver perto o suficiente para poupar resources
-                local distToMarker = math.sqrt((myPos.x - px)^2 + (myPos.y - py)^2)
-                if distToMarker < 350.0 then
-                    -- Cor: laranja quando dentro da zona, vermelho quando estamos fora
-                    local inside = dist2d <= r
-                    local r_c = inside and 255 or 220
-                    local g_c = inside and 100 or  30
-                    local b_c = inside and  20 or  20
-                    local a_c = inside and 120 or 180
-
-                    -- Marker tipo 1 = cylinder; desenhado na borda, altura = PILLAR_H
-                    DrawMarker(1,
-                        px, py, cz,
-                        0.0, 0.0, 0.0,
-                        0.0, 0.0, 0.0,
-                        PILLAR_W, PILLAR_W, PILLAR_H,
-                        r_c, g_c, b_c, a_c,
-                        false, true, 2, nil, nil, false)
+                        -- Marker tipo 1 = cylinder
+                        DrawMarker(1,
+                            px, py, cz,
+                            0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0,
+                            PILLAR_W, PILLAR_W, PILLAR_H,
+                            r_c, g_c, b_c, a_c,
+                            false, true, 2, nil, nil, false)
+                    end
                 end
-            end
 
-            ::nextFrame::
-            Citizen.Wait(0)
+                Citizen.Wait(0)
+            end
         end
     end)
 end
