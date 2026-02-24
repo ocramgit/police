@@ -99,7 +99,9 @@ local function removeAllWeapons()
     RemoveAllPedWeapons(PlayerPedId(), true)
 end
 
--- ── Freeze ───────────────────────────────────────────────────
+-- ── Freeze (generation counter evita race condition entre rondas) ───────
+
+local freezeGen = 0  -- incrementado a cada freeze; thread antiga sai ao ver geração diferente
 
 local function freezePlayer(active)
     isFrozen = active
@@ -118,8 +120,10 @@ local function freezePlayer(active)
     end
 
     if active then
+        freezeGen = freezeGen + 1
+        local myGen = freezeGen
         Citizen.CreateThread(function()
-            while isFrozen do
+            while isFrozen and freezeGen == myGen do
                 DisableControlAction(0, 30,  true)
                 DisableControlAction(0, 31,  true)
                 DisableControlAction(0, 21,  true)
@@ -139,6 +143,9 @@ local function freezePlayer(active)
                 end
                 Citizen.Wait(0)
             end
+            -- limpar ao sair — seja por isFrozen=false OU nova geração
+            FreezeEntityPosition(PlayerPedId(), false)
+            SetEntityInvincible(PlayerPedId(), false)
             if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
                 FreezeEntityPosition(spawnedVehicle, false)
                 SetVehicleEngineOn(spawnedVehicle, true, false, true)
@@ -172,36 +179,49 @@ local function cleanupChaos()
     chaosEntities = {}
 end
 
--- ── Spawn de rampa individual (não-networked) ─────────────────
+-- ── Spawn de rampa numa posição de estrada ───────────────────
+-- nodeX/Y/Z vêm de GetClosestVehicleNode; terreno garantidamente carregado
 
-local function spawnRamp(rx, ry, rz, rh, size)
-    local models   = RAMP_PROPS[size] or RAMP_PROPS.medium
-    local model    = randomFrom(models)
-    local hash     = GetHashKey(model)
+local rampCount   = 0
+local MAX_RAMPS   = 80
+local rampList    = {}   -- lista separada para poder apagar as mais antigas
+
+local function spawnRampOnRoad(nx, ny, nz, size)
+    if rampCount >= MAX_RAMPS then
+        -- Apagar a rampa mais antiga
+        local oldest = table.remove(rampList, 1)
+        if oldest and DoesEntityExist(oldest) then DeleteEntity(oldest) end
+        rampCount = rampCount - 1
+    end
+
+    local models = RAMP_PROPS[size] or RAMP_PROPS.medium
+    local model  = randomFrom(models)
+    local hash   = GetHashKey(model)
 
     RequestModel(hash)
     local t = 0
     while not HasModelLoaded(hash) and t < 30 do Citizen.Wait(100); t = t + 1 end
-    if not HasModelLoaded(hash) then SetModelAsNoLongerNeeded(hash); return end
+    if not HasModelLoaded(hash) then SetModelAsNoLongerNeeded(hash); return false end
 
-    -- Pedir colisão na área antes de spawnar
-    RequestCollisionAtCoord(rx, ry, rz)
-    Citizen.Wait(300)
+    -- Terreno carregado (perto do jogador): Z directo
+    local gFound, gz = GetGroundZFor_3dCoord(nx, ny, nz + 50.0, false)
+    local finalZ = gFound and gz or nz
 
-    -- Tentar obter Z real do terreno
-    local found, gz = GetGroundZFor_3dCoord(rx, ry, rz + 50.0, false)
-    local finalZ = found and gz or rz
+    local prop = CreateObject(hash, nx, ny, finalZ + 0.1, true, true, false)
+    if not DoesEntityExist(prop) then SetModelAsNoLongerNeeded(hash); return false end
 
-    -- Criar objeto NÃO networked (false, false, false) para fiabilidade
-    local prop = CreateObject(hash, rx, ry, finalZ + 0.3, false, false, false)
-    if not DoesEntityExist(prop) then SetModelAsNoLongerNeeded(hash); return end
-
-    SetEntityHeading(prop, rh)
+    -- Heading variado: alinhado à estrada ou diagonal
+    local headings = {0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0}
+    SetEntityHeading(prop, headings[math.random(#headings)])
     PlaceObjectOnGroundProperly(prop)
     FreezeEntityPosition(prop, true)
+    SetEntityCollision(prop, true, true)
     SetModelAsNoLongerNeeded(hash)
 
+    rampList[#rampList + 1]          = prop
     chaosEntities[#chaosEntities + 1] = prop
+    rampCount = rampCount + 1
+    return true
 end
 
 -- ── Spawn de veículo de perseguição ───────────────────────────
@@ -248,7 +268,29 @@ end
 -- ── CAOS PRINCIPAL ────────────────────────────────────────────
 
 local function startChaosZone()
-    -- 1. Tráfego extremo
+    rampCount = 0
+    rampList  = {}
+
+    -- 1. Rampa especial fixa (coordenada do utilizador)
+    Citizen.CreateThread(function()
+        local hash = GetHashKey('prop_mp_ramp_03')
+        RequestModel(hash)
+        local t = 0
+        while not HasModelLoaded(hash) and t < 40 do Citizen.Wait(100); t = t + 1 end
+        if HasModelLoaded(hash) then
+            local prop = CreateObject(hash, 182.22, -809.06, 31.18, true, true, false)
+            if DoesEntityExist(prop) then
+                SetEntityHeading(prop, 158.14)
+                PlaceObjectOnGroundProperly(prop)
+                FreezeEntityPosition(prop, true)
+                SetEntityCollision(prop, true, true)
+                chaosEntities[#chaosEntities + 1] = prop
+            end
+            SetModelAsNoLongerNeeded(hash)
+        end
+    end)
+
+    -- 2. Tráfego extremo
     Citizen.CreateThread(function()
         while roundActive do
             SetVehicleDensityMultiplierThisFrame(5.0)
@@ -264,30 +306,75 @@ local function startChaosZone()
         SetPedDensityMultiplierThisFrame(1.0)
     end)
 
-    -- 2. Spawnar todas as rampas do config (dentro da zona)
+    -- 3. Rampas dinâmicas progressivas — sempre na estrada, perto do jogador
+    --    Quanto mais tempo passa: mais rampas, mais perto
     Citizen.CreateThread(function()
-        for _, r in ipairs(Config.rampPositions) do
-            spawnRamp(r[1], r[2], r[3], r[4], r[5])
-            Citizen.Wait(150)   -- espaçar para não crashar
+        Citizen.Wait(4000)
+        local startTime = GetGameTimer()
+
+        while roundActive do
+            local elapsed = (GetGameTimer() - startTime) / 1000
+
+            -- Frequência e proximidade escalam com o tempo
+            local interval, batch, minDist, maxDist
+            if     elapsed < 60  then interval, batch, minDist, maxDist = 20000, 1, 100, 200  -- 0–1 min
+            elseif elapsed < 180 then interval, batch, minDist, maxDist = 12000, 2,  70, 160  -- 1–3 min
+            elseif elapsed < 360 then interval, batch, minDist, maxDist =  7000, 3,  40, 110  -- 3–6 min
+            elseif elapsed < 540 then interval, batch, minDist, maxDist =  4000, 4,  20,  80  -- 6–9 min
+            else                      interval, batch, minDist, maxDist =  2500, 5,  10,  50  -- 9+ min
+            end
+
+            -- Tamanho varia por ciclo
+            local sizes = {'small', 'medium', 'large'}
+
+            for i = 1, batch do
+                if not roundActive then break end
+                local pedCoords = GetEntityCoords(PlayerPedId())
+                local angle     = math.random() * math.pi * 2
+                local dist      = math.random(minDist, maxDist)
+                local tx        = pedCoords.x + math.cos(angle) * dist
+                local ty        = pedCoords.y + math.sin(angle) * dist
+
+                -- GetClosestVehicleNode funciona porque estamos perto do jogador (terreno carregado)
+                local roadFound, nodePos = GetClosestVehicleNode(tx, ty, pedCoords.z, 0, 3.0, 0)
+                if roadFound and nodePos then
+                    local sz = sizes[((rampCount) % 3) + 1]
+                    spawnRampOnRoad(nodePos.x, nodePos.y, nodePos.z, sz)
+                end
+                Citizen.Wait(600)
+            end
+
+            Citizen.Wait(interval)
         end
     end)
 
-    -- 3. Veículos de perseguição periódicos
-    --    Ladrões recebem MUITO mais carros, polícias recebem menos
+    -- 4. Ondas de carros agressivos — escalam com o tempo
     Citizen.CreateThread(function()
-        Citizen.Wait(5000)
-        local interval = (myRole == 'robber') and 12000 or 30000   -- 12s ladrão / 30s polícia
-        local maxCars  = (myRole == 'robber') and 3       or 1     -- 3 carros de uma vez vs 1
+        Citizen.Wait(8000)
+        local startTime = GetGameTimer()
 
         while roundActive do
-            for _ = 1, maxCars do
+            local elapsed = (GetGameTimer() - startTime) / 1000
+
+            local interval, batch
+            if     elapsed < 60  then interval, batch = 30000, 1
+            elseif elapsed < 180 then interval, batch = 20000, 2
+            elseif elapsed < 360 then interval, batch = 14000, 3
+            elseif elapsed < 540 then interval, batch = 10000, 4
+            else                      interval, batch =  7000, 5
+            end
+
+            if myRole == 'robber' then batch = batch + 1 end
+
+            for _ = 1, batch do
                 spawnChaseVehicle()
-                Citizen.Wait(1000)
+                Citizen.Wait(800)
             end
             Citizen.Wait(interval)
         end
     end)
 end
+
 
 -- ── Blips de localização ──────────────────────────────────────
 
