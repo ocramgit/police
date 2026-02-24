@@ -173,9 +173,9 @@ end
 -- ── Limpeza de caos ───────────────────────────────────────────
 
 local function cleanupChaos()
+    -- 1. Apagar todas as entidades registadas
     for _, e in ipairs(chaosEntities) do
         if DoesEntityExist(e) then
-            -- Para entidades networked, pedir controlo antes de apagar
             SetEntityAsMissionEntity(e, true, true)
             NetworkRequestControlOfEntity(e)
             DeleteEntity(e)
@@ -184,6 +184,28 @@ local function cleanupChaos()
     chaosEntities = {}
     rampCount     = 0
     rampList      = {}
+
+    -- 2. Varredura de raio: apagar veículos sem jogador num raio de 500m
+    local myCoords = GetEntityCoords(PlayerPedId())
+    local handle, veh = FindFirstVehicle()
+    local found = handle ~= -1
+    while found do
+        if DoesEntityExist(veh) then
+            local vCoords = GetEntityCoords(veh)
+            local dist    = #(myCoords - vCoords)
+            if dist < 500.0 and not IsVehicleSeatFree(veh, -1) == false then
+                -- Só apagar se não tiver jogador dentro
+                local driver = GetPedInVehicleSeat(veh, -1)
+                if driver == 0 or not IsPedAPlayer(driver) then
+                    SetEntityAsMissionEntity(veh, true, true)
+                    NetworkRequestControlOfEntity(veh)
+                    DeleteEntity(veh)
+                end
+            end
+        end
+        found, veh = FindNextVehicle(handle)
+    end
+    EndFindVehicle(handle)
 end
 
 -- ── Spawn de rampa numa posição de estrada ───────────────────
@@ -430,55 +452,129 @@ local function startChaosZone()
             end
         end)
 
-        -- Tanques que perseguem (sem canhao — só abalroam)
+        -- Tanques que perseguem (sem canhão — só abalroam)
         Citizen.CreateThread(function()
-            local tankModels = {'rhino', 'insurgent', 'apc'}
-            local startTime3 = GetGameTimer()
+            -- Modelos GARANTIDOS no base game / disponíveis
+            local tankModels = {'insurgent2', 'insurgent3', 'barrage', 'insurgent'}
+            Citizen.Wait(120000)  -- primeiro tanque após 2 minutos
             while roundActive do
-                local elapsed = (GetGameTimer() - startTime3) / 1000
-                -- Primeiro tanque após 3 minutos; depois a cada 2 minutos
-                local interval = elapsed < 180 and 180000 or 120000
-                Citizen.Wait(interval)
-                if not roundActive then break end
-
                 local coords = GetEntityCoords(PlayerPedId())
                 local angle  = math.random() * math.pi * 2
-                local px     = coords.x + math.cos(angle) * math.random(150, 250)
-                local py     = coords.y + math.sin(angle) * math.random(150, 250)
-                RequestCollisionAtCoord(px, py, coords.z)
-                Citizen.Wait(300)
-                local ok, gz = GetGroundZFor_3dCoord(px, py, coords.z + 50, false)
-                if not ok then goto skipTank end
+                local dist   = math.random(150, 250)
+                local px     = coords.x + math.cos(angle) * dist
+                local py     = coords.y + math.sin(angle) * dist
 
-                local tModel = tankModels[math.random(#tankModels)]
-                local tHash  = GetHashKey(tModel)
-                RequestModel(tHash)
-                local t = 0
-                while not HasModelLoaded(tHash) and t < 30 do Citizen.Wait(100); t = t + 1 end
-                if HasModelLoaded(tHash) then
-                    local tank = CreateVehicle(tHash, px, py, gz + 1.0, math.random(0,359)*1.0, true, false)
+                -- Usar GetClosestVehicleNode (mais fiável, terreno carregado perto)
+                local roadOk, nodePos = GetClosestVehicleNode(px, py, coords.z, 0, 3.0, 0)
+                if not roadOk or not nodePos then goto skipTank end
+
+                do
+                    local tModel = tankModels[math.random(#tankModels)]
+                    local tHash  = GetHashKey(tModel)
+                    RequestModel(tHash)
+                    local t = 0
+                    while not HasModelLoaded(tHash) and t < 40 do Citizen.Wait(100); t = t + 1 end
+                    if not HasModelLoaded(tHash) then SetModelAsNoLongerNeeded(tHash); goto skipTank end
+
+                    local tank = CreateVehicle(tHash, nodePos.x, nodePos.y, nodePos.z + 1.0, math.random(0,359)*1.0, true, false)
                     SetVehicleEngineOn(tank, true, false, true)
                     SetModelAsNoLongerNeeded(tHash)
 
-                    local dHash = GetHashKey('s_m_y_cop_01')
+                    local dHash = GetHashKey('s_m_y_swat_01')
                     RequestModel(dHash)
                     t = 0
                     while not HasModelLoaded(dHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
                     if HasModelLoaded(dHash) then
                         local driver = CreatePedInsideVehicle(tank, 26, dHash, -1, true, false)
-                        -- Sem armas = sem tiros de canhão
                         RemoveAllPedWeapons(driver, true)
                         SetDriverAggressiveness(driver, 1.0)
                         SetDriverAbility(driver, 1.0)
                         TaskVehicleChase(driver, PlayerPedId())
                         SetModelAsNoLongerNeeded(dHash)
                         chaosEntities[#chaosEntities + 1] = driver
-                        notify('🪖 TANQUE na perseguição!', 'error', 5000)
+                        notify('🚛 BLINDADO na perseguição!', 'error', 5000)
                     end
                     chaosEntities[#chaosEntities + 1] = tank
                 end
                 ::skipTank::
+                -- Próximo tanque a cada 90s
+                Citizen.Wait(90000)
             end
+        end)
+
+        -- Carros de PROTEÇÃO — 5-10 carros invencíveis que atrapalham as polícias
+        Citizen.CreateThread(function()
+            Citizen.Wait(3000)
+            local protectModels = {'baller2', 'granger', 'guardian', 'dubsta2', 'mesa'}
+            local numProtect    = math.random(5, 10)
+
+            for i = 1, numProtect do
+                if not roundActive then break end
+                local coords = GetEntityCoords(PlayerPedId())
+                local angle  = math.random() * math.pi * 2
+                local dist   = math.random(30, 80)
+                local px     = coords.x + math.cos(angle) * dist
+                local py     = coords.y + math.sin(angle) * dist
+
+                local roadOk, nodePos = GetClosestVehicleNode(px, py, coords.z, 0, 3.0, 0)
+                if not roadOk or not nodePos then goto skipProtect end
+
+                do
+                    local cModel = protectModels[math.random(#protectModels)]
+                    local cHash  = GetHashKey(cModel)
+                    RequestModel(cHash)
+                    local t = 0
+                    while not HasModelLoaded(cHash) and t < 25 do Citizen.Wait(100); t = t + 1 end
+                    if not HasModelLoaded(cHash) then SetModelAsNoLongerNeeded(cHash); goto skipProtect end
+
+                    local pCar = CreateVehicle(cHash, nodePos.x, nodePos.y, nodePos.z + 0.5, math.random(0,359)*1.0, true, false)
+                    SetVehicleEngineOn(pCar, true, false, true)
+                    SetModelAsNoLongerNeeded(cHash)
+
+                    -- INVENCÍVEL
+                    SetEntityInvincible(pCar, true)
+                    SetVehicleCanBeVisiblyDamaged(pCar, false)
+                    SetVehicleWheelsCanBreak(pCar, false)
+
+                    local dHash = GetHashKey('g_m_y_lost_02')
+                    RequestModel(dHash)
+                    t = 0
+                    while not HasModelLoaded(dHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
+                    if HasModelLoaded(dHash) then
+                        local driver = CreatePedInsideVehicle(pCar, 26, dHash, -1, true, false)
+                        RemoveAllPedWeapons(driver, true)
+                        SetEntityInvincible(driver, true)
+                        SetDriverAggressiveness(driver, 1.0)
+                        SetDriverAbility(driver, 1.0)
+                        SetModelAsNoLongerNeeded(dHash)
+                        chaosEntities[#chaosEntities + 1] = driver
+                    end
+                    chaosEntities[#chaosEntities + 1] = pCar
+
+                    -- Thread: este carro persegue a polícia mais próxima do ladrão
+                    Citizen.CreateThread(function()
+                        while roundActive and DoesEntityExist(pCar) do
+                            -- Encontrar o ped mais próximo que NÃO é o jogador
+                            local pCoords = GetEntityCoords(PlayerPedId())
+                            local closest, closestDist = 0, 999999
+                            for _, ped in ipairs(GetGamePool('CPed')) do
+                                if ped ~= PlayerPedId() and IsPedAPlayer(ped) then
+                                    local d = #(pCoords - GetEntityCoords(ped))
+                                    if d < closestDist then closest = ped; closestDist = d end
+                                end
+                            end
+                            local driverP = GetPedInVehicleSeat(pCar, -1)
+                            if closest ~= 0 and driverP ~= 0 then
+                                TaskVehicleChase(driverP, closest)
+                            end
+                            Citizen.Wait(5000)
+                        end
+                    end)
+                end
+                ::skipProtect::
+                Citizen.Wait(1500)
+            end
+            notify('🛡️ ' .. numProtect .. ' carros de PROTEÇÃO activados!', 'success', 5000)
         end)
     end
 end
@@ -703,10 +799,10 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
         end
     end)
 
-    -- Thread de reparação periódica (rodas e durabilidade) — a cada 60s
+    -- Thread de reparação periódica (rodas e durabilidade) — a cada 30s
     Citizen.CreateThread(function()
         while roundActive do
-            Citizen.Wait(60000)  -- 1 minuto
+            Citizen.Wait(30000)  -- 30 segundos
             if not roundActive then break end
             local veh = spawnedVehicle
             if veh and DoesEntityExist(veh) then
@@ -724,9 +820,8 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
                 if GetVehicleBodyHealth(veh) < 800.0 then
                     SetVehicleBodyHealth(veh, 800.0)
                 end
-                -- Impedir rodas de rebentar facilmente
                 SetVehicleWheelsCanBreak(veh, false)
-                notify('🔧 Veículo reparado automaticamente!', 'success', 3000)
+                notify('🔧 Rodas e veículo reparados!', 'success', 2000)
             end
         end
     end)
