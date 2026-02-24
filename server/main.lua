@@ -5,6 +5,8 @@ local cops          = {}
 local robbers       = {}
 local livingRobbers = 0
 local givenItems    = {}  -- { [src] = {{item,amount}, ...} }
+local heliCooldowns = {}  -- { [src] = timestamp }
+local activeZone    = nil -- zona sorteada desta ronda
 
 -- ── Utilitários ──────────────────────────────────────────────
 
@@ -48,9 +50,16 @@ local function cleanupItems(src)
     givenItems[src] = nil
 end
 
+-- ── Kill Feed ─────────────────────────────────────────────────
+
+local function broadcastKillFeed(feedType, actor, victim)
+    for src in pairs(cops)    do TriggerClientEvent('policia:killFeed', src, feedType, actor, victim) end
+    for src in pairs(robbers) do TriggerClientEvent('policia:killFeed', src, feedType, actor, victim) end
+end
+
 -- ── Lógica principal ─────────────────────────────────────────
 
-local function startRound(numCops, lockSeconds)
+local function startRound(numCops, lockSeconds, waveMode)
     if roundActive then return end
 
     local players = QBCore.Functions.GetPlayers()
@@ -67,7 +76,12 @@ local function startRound(numCops, lockSeconds)
     cops          = {}
     robbers       = {}
     givenItems    = {}
+    heliCooldowns = {}
     livingRobbers = 0
+
+    -- Sortear zona aleatória
+    activeZone = Config.zones[math.random(#Config.zones)]
+    print(('[POLICIA] Zona sorteada: %s'):format(activeZone.name))
 
     local pool = {}
     for _, src in ipairs(players) do pool[#pool+1] = src end
@@ -78,19 +92,21 @@ local function startRound(numCops, lockSeconds)
         else robbers[src] = true; livingRobbers = livingRobbers + 1 end
     end
 
-    print(('[POLICIA] Ronda | Pol:%d | Ladr:%d | Lock:%ds'):format(numCops, livingRobbers, lockSeconds))
+    print(('[POLICIA] Ronda | Pol:%d | Ladr:%d | Lock:%ds | Ondas:%s'):format(
+        numCops, livingRobbers, lockSeconds, waveMode and 'ON' or 'OFF'))
 
     -- Enviar zona para todos
-    TriggerClientEvent('policia:setupZone', -1, Config.zone.x, Config.zone.y, Config.zone.z, Config.zone.radius)
-    notifyAll('🚨 MINIJOGO: POLICIA VS LADROES! Verifica o teu papel...', 'warning')
+    TriggerClientEvent('policia:setupZone', -1,
+        activeZone.x, activeZone.y, activeZone.z, activeZone.radius, activeZone.name)
+    notifyAll('🚨 MINIJOGO: POLICIA VS LADROES! 📍 ' .. activeZone.name, 'warning')
 
     Citizen.Wait(2000)
 
-    -- Spawns únicos: embaralhar listas e distribuir
+    -- Spawns únicos da zona sorteada
     local copSpawnPool    = {}
     local robberSpawnPool = {}
-    for _, v in ipairs(Config.copsSpawns)    do copSpawnPool[#copSpawnPool+1]       = v end
-    for _, v in ipairs(Config.robbersSpawns) do robberSpawnPool[#robberSpawnPool+1] = v end
+    for _, v in ipairs(activeZone.copsSpawns)    do copSpawnPool[#copSpawnPool+1]       = v end
+    for _, v in ipairs(activeZone.robbersSpawns) do robberSpawnPool[#robberSpawnPool+1] = v end
     shuffle(copSpawnPool)
     shuffle(robberSpawnPool)
 
@@ -101,7 +117,8 @@ local function startRound(numCops, lockSeconds)
         copIdx = copIdx + 1
         local car = randomFrom(Config.policeCars)
         TriggerClientEvent('policia:assignRole', src, 'cop', car, lockSeconds,
-            spawnPos, Config.policeWeapon, Config.policeAmmo)
+            spawnPos, Config.policeWeapon, Config.policeAmmo, waveMode,
+            Config.roadblockCount)
         Citizen.Wait(200)
         giveItem(src, Config.policeWeapon,  1, {ammo = Config.policeAmmo, quality = 100})
         giveItem(src, Config.handcuffsItem, 1, {})
@@ -112,7 +129,8 @@ local function startRound(numCops, lockSeconds)
         robberIdx = robberIdx + 1
         local car = randomFrom(Config.robberCars)
         TriggerClientEvent('policia:assignRole', src, 'robber', car, lockSeconds,
-            spawnPos, Config.robberWeapon, Config.robberAmmo)
+            spawnPos, Config.robberWeapon, Config.robberAmmo, waveMode,
+            Config.roadblockCount)
         Citizen.Wait(200)
         giveItem(src, Config.robberWeapon, 1, {quality = 100})
     end
@@ -187,6 +205,7 @@ function endRound(reason, winner)
         for src in pairs(robbers) do cleanupItems(src) end
         cops    = {}
         robbers = {}
+        activeZone = nil
     end)
 
     print('[POLICIA] Ronda terminada: ' .. (reason or ''))
@@ -199,7 +218,6 @@ AddEventHandler('policia:tryArrest', function()
     local src = source
     if not roundActive or not cops[src] then return end
 
-    -- Polícia deve estar fora do carro
     if IsPedInAnyVehicle(GetPlayerPed(src), false) then
         TriggerClientEvent('QBCore:Notify', src, '🚗 Sai do carro para poder algemar!', 'error', 3000)
         return
@@ -212,18 +230,19 @@ AddEventHandler('policia:tryArrest', function()
         local dist = #(copCoords - robberCoords)
 
         if dist <= Config.arrestRange then
-            -- Ladrão também deve estar fora do carro
             if IsPedInAnyVehicle(GetPlayerPed(robberSrc), false) then
                 TriggerClientEvent('QBCore:Notify', src, '🚗 O suspeito ainda está no carro!', 'error', 3000)
                 return
             end
 
             local robberName = GetPlayerName(robberSrc)
+            local copName    = GetPlayerName(src)
             robbers[robberSrc] = nil
             livingRobbers = livingRobbers - 1
 
             TriggerClientEvent('policia:youWereArrested', robberSrc)
-            notifyAll(('🔒 %s foi ALGEMADO por %s!'):format(robberName, GetPlayerName(src)), 'error')
+            notifyAll(('🔒 %s foi ALGEMADO por %s!'):format(robberName, copName), 'error')
+            broadcastKillFeed('arrest', copName, robberName)
 
             if livingRobbers <= 0 then
                 endRound('Todos os ladrões foram apanhados!', 'cops')
@@ -235,7 +254,6 @@ AddEventHandler('policia:tryArrest', function()
     TriggerClientEvent('QBCore:Notify', src, '❌ Nenhum suspeito ao alcance!', 'error', 3000)
 end)
 
-
 -- ── Evento: Ladrão morreu ─────────────────────────────────────
 
 RegisterServerEvent('policia:robberDied')
@@ -243,10 +261,12 @@ AddEventHandler('policia:robberDied', function()
     local src = source
     if not roundActive or not robbers[src] then return end
 
+    local victimName = GetPlayerName(src)
     robbers[src]  = nil
     livingRobbers = livingRobbers - 1
 
-    notifyAll(('💀 %s foi eliminado! Restam %d ladrão(ões).'):format(GetPlayerName(src), livingRobbers), 'error')
+    notifyAll(('💀 %s foi eliminado! Restam %d ladrão(ões).'):format(victimName, livingRobbers), 'error')
+    broadcastKillFeed('kill', 'NPC', victimName)
 
     if livingRobbers <= 0 then
         endRound('Todos os ladrões foram eliminados!', 'cops')
@@ -261,10 +281,12 @@ AddEventHandler('policia:outOfBounds', function()
     if not roundActive then return end
 
     if robbers[src] then
+        local victimName = GetPlayerName(src)
         robbers[src]  = nil
         livingRobbers = livingRobbers - 1
-        notifyAll(('🚫 %s SAIU DA ZONA e foi eliminado!'):format(GetPlayerName(src)), 'error')
+        notifyAll(('🚫 %s SAIU DA ZONA e foi eliminado!'):format(victimName), 'error')
         TriggerClientEvent('policia:youWereArrested', src)
+        broadcastKillFeed('oob', '', victimName)
         if livingRobbers <= 0 then
             endRound('Todos os ladrões foram eliminados!', 'cops')
         end
@@ -273,27 +295,73 @@ AddEventHandler('policia:outOfBounds', function()
     end
 end)
 
+-- ── Evento: Pedir helicóptero de apoio ───────────────────────
+
+RegisterServerEvent('policia:requestHeli')
+AddEventHandler('policia:requestHeli', function()
+    local src = source
+    if not roundActive or not cops[src] then return end
+
+    local now = os.time()
+    if heliCooldowns[src] and (now - heliCooldowns[src]) < Config.heliSupport.cooldown then
+        local remaining = Config.heliSupport.cooldown - (now - heliCooldowns[src])
+        TriggerClientEvent('QBCore:Notify', src,
+            ('🚁 Helicóptero em cooldown! Disponível em %ds.'):format(remaining), 'error', 4000)
+        return
+    end
+
+    heliCooldowns[src] = now
+
+    -- Encontrar posição do ladrão mais próximo para enviar ao cop
+    local copCoords   = GetEntityCoords(GetPlayerPed(src))
+    local best, bestD = nil, 999999
+    for robberSrc in pairs(robbers) do
+        local rc = GetEntityCoords(GetPlayerPed(robberSrc))
+        local d  = #(copCoords - rc)
+        if d < bestD then best = rc; bestD = d end
+    end
+
+    TriggerClientEvent('policia:spawnHeli', src,
+        best and {x=best.x, y=best.y, z=best.z} or nil,
+        Config.heliSupport.duration,
+        Config.heliSupport.heliAlt)
+
+    TriggerClientEvent('QBCore:Notify', src, '🚁 Helicóptero de apoio a caminho!', 'success', 4000)
+    notifyAll('🚁 [POLÍCIA] Pediu apoio aéreo!', 'warning')
+end)
+
+-- ── Evento: Iniciar ronda da UI ───────────────────────────────
+
+RegisterServerEvent('policia:startFromUI')
+AddEventHandler('policia:startFromUI', function(numCops, lockSecs, waveMode)
+    local src = source
+    if roundActive then
+        TriggerClientEvent('QBCore:Notify', src, 'Já existe uma ronda activa.', 'error')
+        return
+    end
+    numCops  = tonumber(numCops)  or 1
+    lockSecs = tonumber(lockSecs) or 30
+    if type(waveMode) ~= 'boolean' then waveMode = true end
+    startRound(numCops, lockSecs, waveMode)
+end)
+
 -- ── Comandos ──────────────────────────────────────────────────
 
+-- /comecarpolicia — abre a UI de configuração no cliente
 RegisterCommand('comecarpolicia', function(source, args)
-    local numCops  = tonumber(args[1])
-    local lockSecs = tonumber(args[2])
-
-    if not numCops or not lockSecs or numCops < 1 or lockSecs < 1 then
-        local msg = 'Uso: /comecarpolicia <nPolicias> <segundosLock>'
-        if source == 0 then print('[POLICIA] ' .. msg)
-        else TriggerClientEvent('QBCore:Notify', source, msg, 'error') end
+    local src = source
+    if src == 0 then
+        -- Console: modo direto
+        local numCops  = tonumber(args[1]) or 1
+        local lockSecs = tonumber(args[2]) or 30
+        startRound(numCops, lockSecs, true)
         return
     end
-
     if roundActive then
-        local msg = 'Já existe uma ronda activa.'
-        if source == 0 then print('[POLICIA] ' .. msg)
-        else TriggerClientEvent('QBCore:Notify', source, msg, 'error') end
+        TriggerClientEvent('QBCore:Notify', src, 'Já existe uma ronda activa.', 'error')
         return
     end
-
-    startRound(numCops, lockSecs)
+    TriggerClientEvent('policia:openAdminUI', src)
 end, false)
 
 RegisterCommand('terminarpolicia', function()

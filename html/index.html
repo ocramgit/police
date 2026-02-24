@@ -9,11 +9,64 @@
 </head>
 
 <body>
+
+    <!-- ── ADMIN CONFIG UI ─────────────────────────────────── -->
+    <div id="admin-ui" class="hidden">
+        <div id="admin-panel">
+            <div id="admin-header">
+                <span id="admin-icon">🚨</span>
+                <h1 id="admin-title">INICIAR RONDA</h1>
+                <p id="admin-sub">Configura os parâmetros antes de começar</p>
+            </div>
+
+            <div class="admin-field">
+                <label for="input-cops">👮 Número de Polícias</label>
+                <div class="input-row">
+                    <button class="adj-btn" data-target="input-cops" data-delta="-1">−</button>
+                    <input type="number" id="input-cops" min="1" max="20" value="2" />
+                    <button class="adj-btn" data-target="input-cops" data-delta="1">+</button>
+                </div>
+            </div>
+
+            <div class="admin-field">
+                <label for="input-lock">⏱️ Freeze Inicial (segundos)</label>
+                <div class="input-row">
+                    <button class="adj-btn" data-target="input-lock" data-delta="-10">−</button>
+                    <input type="number" id="input-lock" min="5" max="300" value="30" />
+                    <button class="adj-btn" data-target="input-lock" data-delta="10">+</button>
+                </div>
+                <span class="field-hint" id="lock-hint">30 segundos</span>
+            </div>
+
+            <div class="admin-field toggle-field">
+                <label>🌊 Modo Ondas</label>
+                <div class="toggle-group">
+                    <button id="waves-on" class="toggle-btn active">ON</button>
+                    <button id="waves-off" class="toggle-btn">OFF</button>
+                </div>
+                <span class="field-hint waves-hint-on">Carros, tanques, helis e caos progressivo</span>
+            </div>
+
+            <div id="admin-actions">
+                <button id="btn-start">🚀 INICIAR</button>
+                <button id="btn-cancel">✕ Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── HUD PRINCIPAL ──────────────────────────────────── -->
     <div id="hud" class="hidden">
+
         <!-- Papel do jogador -->
         <div id="role-badge">
             <span id="role-icon">🚓</span>
             <span id="role-label">POLÍCIA</span>
+        </div>
+
+        <!-- Badge de onda atual -->
+        <div id="wave-badge" class="hidden">
+            <span id="wave-icon">⚡</span>
+            <span id="wave-label">Carros Leves</span>
         </div>
 
         <!-- Fase: preso ou em jogo -->
@@ -46,9 +99,12 @@
 
         <!-- Tecla de Acção (cop only) -->
         <div id="action-hint" class="hidden">
-            <kbd>G</kbd> Algemar
+            <kbd>G</kbd> Algemar &nbsp; <kbd>H</kbd> Heli
         </div>
     </div>
+
+    <!-- ── KILL FEED (lado esquerdo) ──────────────────────── -->
+    <div id="kill-feed"></div>
 
     <script src="app.js"></script>
 </body>
