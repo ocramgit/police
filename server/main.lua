@@ -155,9 +155,13 @@ local function startRound(numCops, lockSeconds, waveMode)
         end
     end)
 
-    -- Fim por tempo
+    -- Fim por tempo (loop por segundo — evita problemas com Citizen.Wait longo)
     Citizen.CreateThread(function()
-        Citizen.Wait(Config.roundDuration * 1000)
+        local elapsed = 0
+        while roundActive and elapsed < Config.roundDuration do
+            Citizen.Wait(1000)
+            elapsed = elapsed + 1
+        end
         if roundActive then
             endRound('⏱️ Tempo esgotado! Os ladrões escaparam!', 'robbers')
         end
@@ -218,34 +222,42 @@ AddEventHandler('policia:tryArrest', function()
     local src = source
     if not roundActive or not cops[src] then return end
 
-    if IsPedInAnyVehicle(GetPlayerPed(src), false) then
-        TriggerClientEvent('QBCore:Notify', src, '🚗 Sai do carro para poder algemar!', 'error', 3000)
-        return
-    end
-
     local copCoords = GetEntityCoords(GetPlayerPed(src))
 
     for robberSrc in pairs(robbers) do
         local robberCoords = GetEntityCoords(GetPlayerPed(robberSrc))
         local dist = #(copCoords - robberCoords)
 
-        if dist <= Config.arrestRange then
-            if IsPedInAnyVehicle(GetPlayerPed(robberSrc), false) then
-                TriggerClientEvent('QBCore:Notify', src, '🚗 O suspeito ainda está no carro!', 'error', 3000)
-                return
-            end
+        -- Alcance aumentado se o ladrão estiver no carro (5m vs 3.5m)
+        local inCar = IsPedInAnyVehicle(GetPlayerPed(robberSrc), false)
+        local range = inCar and 6.0 or Config.arrestRange
 
+        if dist <= range then
             local robberName = GetPlayerName(robberSrc)
             local copName    = GetPlayerName(src)
-            robbers[robberSrc] = nil
-            livingRobbers = livingRobbers - 1
 
-            TriggerClientEvent('policia:youWereArrested', robberSrc)
-            notifyAll(('🔒 %s foi ALGEMADO por %s!'):format(robberName, copName), 'error')
-            broadcastKillFeed('arrest', copName, robberName)
-
-            if livingRobbers <= 0 then
-                endRound('Todos os ladrões foram apanhados!', 'cops')
+            if inCar then
+                -- Tirar do carro com animação, depois algemar
+                TriggerClientEvent('policia:forceLeaveVehicle', robberSrc)
+                TriggerClientEvent('QBCore:Notify', src, '🚗 A tirar o suspeito do carro...', 'warning', 3000)
+                Citizen.CreateThread(function()
+                    Citizen.Wait(2500)
+                    if not roundActive or not robbers[robberSrc] then return end
+                    robbers[robberSrc] = nil
+                    livingRobbers = livingRobbers - 1
+                    TriggerClientEvent('policia:youWereArrested', robberSrc)
+                    notifyAll(('🔒 %s foi ARRASTADO E ALGEMADO por %s!'):format(robberName, copName), 'error')
+                    broadcastKillFeed('arrest', copName, robberName)
+                    if livingRobbers <= 0 then endRound('Todos os ladrões foram apanhados!', 'cops') end
+                end)
+            else
+                -- Algema normal (a pé)
+                robbers[robberSrc] = nil
+                livingRobbers = livingRobbers - 1
+                TriggerClientEvent('policia:youWereArrested', robberSrc)
+                notifyAll(('🔒 %s foi ALGEMADO por %s!'):format(robberName, copName), 'error')
+                broadcastKillFeed('arrest', copName, robberName)
+                if livingRobbers <= 0 then endRound('Todos os ladrões foram apanhados!', 'cops') end
             end
             return
         end
