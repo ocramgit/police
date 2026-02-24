@@ -81,7 +81,7 @@ wavesOffBtn.addEventListener('click', () => {
 btnStart.addEventListener('click', () => {
     const numCops = parseInt(inputCops.value, 10) || 1;
     const lockSecs = parseInt(inputLock.value, 10) || 30;
-    fetch(`https://policia/policia:submitConfig`, {
+    fetch(`https://${GetParentResourceName()}/policia:submitConfig`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ numCops, lockSecs, waveMode: waveModeSelected })
@@ -91,7 +91,7 @@ btnStart.addEventListener('click', () => {
 
 // Cancelar
 btnCancel.addEventListener('click', () => {
-    fetch(`https://policia/policia:closeAdminUI`, {
+    fetch(`https://${GetParentResourceName()}/policia:closeAdminUI`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
