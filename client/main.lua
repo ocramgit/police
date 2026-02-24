@@ -881,11 +881,11 @@ local function startChaosZone()
     -- 1. Tráfego extremo
     Citizen.CreateThread(function()
         while roundActive do
-            SetVehicleDensityMultiplierThisFrame(5.0)
-            SetRandomVehicleDensityMultiplierThisFrame(5.0)
-            SetParkedVehicleDensityMultiplierThisFrame(3.0)
-            SetPedDensityMultiplierThisFrame(3.0)
-            SetScenarioPedDensityMultiplierThisFrame(3.0, 3.0)
+            SetVehicleDensityMultiplierThisFrame(10.0)
+            SetRandomVehicleDensityMultiplierThisFrame(10.0)
+            SetParkedVehicleDensityMultiplierThisFrame(5.0)
+            SetPedDensityMultiplierThisFrame(5.0)
+            SetScenarioPedDensityMultiplierThisFrame(5.0, 5.0)
             Citizen.Wait(0)
         end
         SetVehicleDensityMultiplierThisFrame(1.0)
@@ -1180,85 +1180,83 @@ local function startChaosZone()
                 end
 
                 if myRole == 'robber' then
-                    -- CAP: nunca mais de 8 entidades chaos
+                    -- CAP: nunca mais de 30 entidades chaos (aumentado para MAIS CAOS)
                     local aliveCount = 0
                     for _, e in ipairs(chaosEntities) do
                         if DoesEntityExist(e) then aliveCount = aliveCount + 1 end
                     end
-                    if aliveCount > 16 then Citizen.Wait(5000) end  -- espera se já há muita coisa
+                    if aliveCount > 30 then Citizen.Wait(3000) end  -- espera se já há muita coisa
 
                     if min == 0 then
-                        -- Min 0-1: COMPLETAMENTE CALMO, ladrão tem 2 min para se orientar
-                        Citizen.Wait(60000)
+                        -- Min 0: COMPLETAMENTE CALMO, ladrão tem apenas 20s para sair
+                        Citizen.Wait(20000)
 
                     elseif min == 1 then
-                        -- Min 1: ainda calmo (apenas leve aviso)
-                        if min ~= lastWave - 1 then  -- só notifica na transição
-                            notify('⚠️ A calma está quase a acabar...', 'warning', 5000)
-                        end
-                        Citizen.Wait(60000)
+                        -- Min 1: inicia perseguição leve
+                        if min ~= lastWave - 1 then notify('⚠️ A calma está quase a acabar...', 'warning', 5000) end
+                        Citizen.Wait(20000)
 
                     elseif min == 2 then
-                        -- Min 2: 1 carro leve de perseguição
+                        -- Min 2: 1 carro leve de perseguição rápido
                         spawnChaser(light, 150, 'a_m_y_downtown_01')
-                        Citizen.Wait(30000)
+                        Citizen.Wait(15000)
 
                     elseif min == 3 then
                         -- Min 3: 1 carro pesado de polícia
                         local police = {'police', 'police2', 'police3', 'fbi'}
                         spawnChaser(police, 160, 's_m_y_cop_01')
-                        Citizen.Wait(25000)
+                        Citizen.Wait(12000)
 
                     elseif min == 4 then
-                        -- Min 4: 2 carros pesados
+                        -- Min 4: 2 carros pesados (intervalo curto)
                         spawnChaser(heavy, 150, 'a_m_m_business_01')
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnChaser(heavy, 180, 'a_m_m_business_01')
-                        Citizen.Wait(20000)
+                        Citizen.Wait(10000)
 
                     elseif min == 5 then
                         -- Min 5: 1 blindado (sem armas) + 1 carro pesado
                         spawnTank(false)
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnChaser(heavy, 150, 'a_m_m_business_01')
-                        Citizen.Wait(18000)
+                        Citizen.Wait(12000)
 
                     elseif min == 6 then
                         -- Min 6: 1 heli (mísseis) + 1 carro pesado
                         spawnHeli(false)
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnChaser(heavy, 150, 's_m_y_swat_01')
-                        Citizen.Wait(18000)
+                        Citizen.Wait(12000)
 
                     elseif min == 7 then
                         -- Min 7: tanque armado + 1 heli
                         spawnTank(true)
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnHeli(false)
-                        Citizen.Wait(18000)
+                        Citizen.Wait(10000)
 
                     elseif min == 8 then
                         -- Min 8: 1 heli kamikaze + 1 tanque
                         spawnHeli(true)
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnTank(true)
-                        Citizen.Wait(15000)
+                        Citizen.Wait(10000)
 
                     elseif min == 9 then
                         -- Min 9: camião + heli kamikaze
                         spawnTruck()
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnHeli(true)
-                        Citizen.Wait(15000)
+                        Citizen.Wait(10000)
 
                     else
-                        -- Min 10+: tanque + heli + autocarro (máx. intensidade)
+                        -- Min 10+: tanque + heli + autocarro (máx. intensidade, loops super curtos)
                         spawnTank(true)
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnHeli(true)
-                        Citizen.Wait(3000)
+                        Citizen.Wait(2000)
                         spawnBus()
-                        Citizen.Wait(12000)
+                        Citizen.Wait(8000)
                     end
                 else
                     -- Cops: apenas aguardam, não spawnamos nada contra eles
@@ -1614,6 +1612,8 @@ local function fullReset()
     currentWave     = 0
     powerupActive   = false
 
+    SetEntityProofs(PlayerPedId(), false, false, false, false, false, false, false, false)
+
     freezePlayer(false)
     closeNUI()
     removeZone()
@@ -1693,6 +1693,9 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
 
     startProximityCheck()
     startOOBCheck()
+
+    -- Tornar os jogadores à prova de bala (a pistola só serve para pneus)
+    SetEntityProofs(ped, true, false, false, false, false, false, false, false)
 
     -- Munição infinita para polícia
     if role == 'cop' then

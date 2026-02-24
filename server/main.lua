@@ -222,14 +222,21 @@ AddEventHandler('policia:tryArrest', function()
     local src = source
     if not roundActive or not cops[src] then return end
 
-    local copCoords = GetEntityCoords(GetPlayerPed(src))
+    local copPed = GetPlayerPed(src)
+    if IsPedInAnyVehicle(copPed, false) then
+        TriggerClientEvent('QBCore:Notify', src, '❌ Tens de sair do carro para algemar!', 'error', 3000)
+        return
+    end
+
+    local copCoords = GetEntityCoords(copPed)
 
     for robberSrc in pairs(robbers) do
-        local robberCoords = GetEntityCoords(GetPlayerPed(robberSrc))
+        local robberPed = GetPlayerPed(robberSrc)
+        local robberCoords = GetEntityCoords(robberPed)
         local dist = #(copCoords - robberCoords)
 
-        -- Alcance aumentado se o ladrão estiver no carro (5m vs 3.5m)
-        local inCar = IsPedInAnyVehicle(GetPlayerPed(robberSrc), false)
+        -- Alcance aumentado se o ladrão estiver no carro (6m vs 3.5m)
+        local inCar = IsPedInAnyVehicle(robberPed, false)
         local range = inCar and 6.0 or Config.arrestRange
 
         if dist <= range then
