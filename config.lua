@@ -109,7 +109,23 @@ Config.zones = {
 }
 
 -- ── VEÍCULOS ────────────────────────────────────────────────
-Config.policeCars = { 'police', 'police2', 'police3' }
+-- Polícia: vários tipos, do normal ao militar (todos recebem full tune)
+Config.policeCars = {
+    'police',      -- Police Cruiser          (LSPD clássico)
+    'police2',     -- Police Cruiser 2        (LSPD muscle)
+    'police3',     -- Police Cruiser 3        (capota)
+    'police4',     -- Unmarked Cruiser        (camuflado)
+    'policet',     -- Police Transporter      (SWAT van)
+    'riot',        -- Riot / SWAT Transport   (tanque antidistúrbios)
+    'fbi',         -- FIB SUV                 (negro)
+    'fbi2',        -- FIB SUV 2               (rápido)
+    'sheriff',     -- Sheriff Cruiser
+    'sheriff2',    -- Sheriff SUV
+    'pranger',     -- Park Ranger             (off-road)
+    'crusader',    -- Military Jeep
+    'barrage',     -- Military Buggy          (exército)
+    'insurgent3',  -- Insurgent Pick-Up       (blindado aberto)
+}
 Config.robberCars = { 'blista', 'issi2', 'prairie', 'rhapsody', 'ingot' }
 
 -- ── ARMAS ───────────────────────────────────────────────────
@@ -131,7 +147,7 @@ Config.heliSupport = {
 }
 
 -- ── ROADBLOCKS NPC ────────────────────────────────────────────
-Config.roadblockCount = 5   -- quantas barricadas por ronda
+Config.roadblockCount = 25  -- quantas barricadas por ronda (cobre quase todas as estradas)
 
 -- ── RAMPAS — apenas as melhores posições ─────────────────────
 Config.rampPositions = {

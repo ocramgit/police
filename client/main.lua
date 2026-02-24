@@ -233,6 +233,18 @@ end
 local function cleanupChaos()
     for _, e in ipairs(chaosEntities) do
         if DoesEntityExist(e) then
+            -- Parar todos os tasks do NPC antes de eliminar
+            if IsEntityAPed(e) then
+                ClearPedTasksImmediately(e)
+                SetPedFleeAttributes(e, 0, true)
+                SetBlockingOfNonTemporaryEvents(e, true)
+            elseif IsEntityAVehicle(e) then
+                local driver = GetPedInVehicleSeat(e, -1)
+                if driver ~= 0 and DoesEntityExist(driver) then
+                    ClearPedTasksImmediately(driver)
+                    SetBlockingOfNonTemporaryEvents(driver, true)
+                end
+            end
             SetEntityAsMissionEntity(e, true, true)
             NetworkRequestControlOfEntity(e)
             DeleteEntity(e)
@@ -362,20 +374,29 @@ local function spawnRoadblocks(count)
         Citizen.Wait(6000)
         if not roundActive or not zoneData then return end
 
+        -- Props de barricada real de polícia
+        local barrierModels = {
+            'prop_mp_barrier_01a',
+            'prop_mp_barrier_02a',
+            'prop_barrier_work_07a',
+            'prop_barrier_work_03a',
+        }
+        local coneModels    = { 'prop_mp_cone_02', 'prop_mp_cone_01' }
         local roadblockCars = {'police2', 'police3', 'sheriff', 'policet'}
-        local rampModels    = {'prop_mp_ramp_02', 'prop_mp_ramp_03', 'prop_mp_ramp_01'}
         local swatHash      = GetHashKey('s_m_y_swat_01')
+
         RequestModel(swatHash)
         local t0 = 0
         while not HasModelLoaded(swatHash) and t0 < 20 do Citizen.Wait(100); t0 = t0 + 1 end
 
-        notify('🚧 Estradas cortadas com barricadas e rampas!', 'warning', 5000)
+        notify('🚧 Estradas cortadas com barricadas de polícia!', 'warning', 5000)
 
         for i = 1, count do
             if not roundActive then break end
 
-            local angle  = math.random() * math.pi * 2
-            local rFrac  = 0.4 + math.random() * 0.45
+            -- Ponto dentro da zona (distribuído por ângulos regulares + ruído)
+            local angle  = (i / count) * math.pi * 2 + math.random() * 0.6
+            local rFrac  = 0.35 + math.random() * 0.55
             local px     = zoneData.x + math.cos(angle) * zoneData.radius * rFrac
             local py     = zoneData.y + math.sin(angle) * zoneData.radius * rFrac
 
@@ -385,48 +406,74 @@ local function spawnRoadblocks(count)
             do
                 local heading = math.random(0, 359) * 1.0
 
-                -- 1) Carro de polícia bloqueando
+                -- Carro de polícia bloqueando
                 local carH = GetHashKey(randomFrom(roadblockCars))
                 RequestModel(carH)
                 local t = 0
                 while not HasModelLoaded(carH) and t < 25 do Citizen.Wait(100); t = t + 1 end
-                if not HasModelLoaded(carH) then goto nextRB end
-
-                local rbVeh = CreateVehicle(carH, nodePos.x, nodePos.y, nodePos.z + 0.5, heading, true, false)
-                SetVehicleEngineOn(rbVeh, false, true, true)
-                FreezeEntityPosition(rbVeh, true)
-                SetVehicleCanBeVisiblyDamaged(rbVeh, false)
-                SetVehicleWheelsCanBreak(rbVeh, false)
-                SetModelAsNoLongerNeeded(carH)
-                chaosEntities[#chaosEntities + 1] = rbVeh
-
-                -- 2) Rampa ao lado do carro
-                local rampH = GetHashKey(randomFrom(rampModels))
-                RequestModel(rampH)
-                t = 0
-                while not HasModelLoaded(rampH) and t < 20 do Citizen.Wait(100); t = t + 1 end
-                if HasModelLoaded(rampH) then
-                    local perpAngle = math.rad(heading) + math.pi / 2
-                    local rx = nodePos.x + math.cos(perpAngle) * 4.5
-                    local ry = nodePos.y + math.sin(perpAngle) * 4.5
-                    local rampProp = CreateObject(rampH, rx, ry, nodePos.z, true, true, false)
-                    if DoesEntityExist(rampProp) then
-                        SetEntityHeading(rampProp, heading)
-                        PlaceObjectOnGroundProperly(rampProp)
-                        FreezeEntityPosition(rampProp, true)
-                        SetEntityCollision(rampProp, true, true)
-                        chaosEntities[#chaosEntities + 1] = rampProp
-                    end
-                    SetModelAsNoLongerNeeded(rampH)
+                if HasModelLoaded(carH) then
+                    local rbVeh = CreateVehicle(carH, nodePos.x, nodePos.y, nodePos.z + 0.5, heading, true, false)
+                    SetVehicleEngineOn(rbVeh, false, true, true)
+                    FreezeEntityPosition(rbVeh, true)
+                    SetVehicleCanBeVisiblyDamaged(rbVeh, false)
+                    SetVehicleWheelsCanBreak(rbVeh, false)
+                    SetModelAsNoLongerNeeded(carH)
+                    chaosEntities[#chaosEntities + 1] = rbVeh
                 end
 
-                -- 3) 2 SWAT a guardar
+                -- 3-5 barreiras de polícia em linha
+                local barrierH = GetHashKey(randomFrom(barrierModels))
+                RequestModel(barrierH)
+                t = 0
+                while not HasModelLoaded(barrierH) and t < 20 do Citizen.Wait(100); t = t + 1 end
+                if HasModelLoaded(barrierH) then
+                    local perpRad = math.rad(heading + 90)
+                    local numBarriers = math.random(3, 5)
+                    for b = 1, numBarriers do
+                        local offsetMult = (b - math.ceil(numBarriers / 2)) * 1.8
+                        local bx = nodePos.x + math.cos(perpRad) * offsetMult
+                        local by = nodePos.y + math.sin(perpRad) * offsetMult
+                        local barrier = CreateObject(barrierH, bx, by, nodePos.z, true, true, false)
+                        if DoesEntityExist(barrier) then
+                            SetEntityHeading(barrier, heading)
+                            PlaceObjectOnGroundProperly(barrier)
+                            FreezeEntityPosition(barrier, true)
+                            SetEntityCollision(barrier, true, true)
+                            chaosEntities[#chaosEntities + 1] = barrier
+                        end
+                    end
+                    SetModelAsNoLongerNeeded(barrierH)
+                end
+
+                -- Cones extras
+                local coneH = GetHashKey(randomFrom(coneModels))
+                RequestModel(coneH)
+                t = 0
+                while not HasModelLoaded(coneH) and t < 15 do Citizen.Wait(100); t = t + 1 end
+                if HasModelLoaded(coneH) then
+                    local perpRad = math.rad(heading + 90)
+                    for c = 1, 2 do
+                        local sign = (c == 1) and 3.5 or -3.5
+                        local cone = CreateObject(coneH,
+                            nodePos.x + math.cos(perpRad) * sign,
+                            nodePos.y + math.sin(perpRad) * sign,
+                            nodePos.z, true, true, false)
+                        if DoesEntityExist(cone) then
+                            PlaceObjectOnGroundProperly(cone)
+                            FreezeEntityPosition(cone, true)
+                            chaosEntities[#chaosEntities + 1] = cone
+                        end
+                    end
+                    SetModelAsNoLongerNeeded(coneH)
+                end
+
+                -- 2 SWAT a guardar
                 for s = 1, 2 do
                     if HasModelLoaded(swatHash) then
                         local perpRad = math.rad(heading + 90)
                         local sign    = (s == 1) and 1.0 or -1.0
-                        local ox      = nodePos.x + math.cos(perpRad) * sign * 2.5
-                        local oy      = nodePos.y + math.sin(perpRad) * sign * 2.5
+                        local ox      = nodePos.x + math.cos(perpRad) * sign * 3.0
+                        local oy      = nodePos.y + math.sin(perpRad) * sign * 3.0
                         local swat    = CreatePed(26, swatHash, ox, oy, nodePos.z, 0.0, true, false)
                         SetEntityInvincible(swat, false)
                         SetPedRelationshipGroupHash(swat, GetHashKey('COP'))
@@ -444,7 +491,7 @@ local function spawnRoadblocks(count)
             end
 
             ::nextRB::
-            Citizen.Wait(600)
+            Citizen.Wait(300)  -- spawn rápido para cobrir mais estradas
         end
         SetModelAsNoLongerNeeded(swatHash)
     end)
@@ -514,64 +561,81 @@ local function startPowerups()
     powerupActive = true
 
     local pickupPoints = {}
-    local PICKUP_RADIUS = 2.5
-    local MARKER_TYPE   = 1   -- cylinder
+    local PICKUP_RADIUS = 3.0
 
-    -- Gerar 6 pontos aleatórios dentro da zona
+    -- Gerar 6 pontos distribuídos pela zona
     for i = 1, 6 do
-        local angle  = (i - 1) * (math.pi * 2 / 6) + math.random() * 0.8
-        local rfrac  = 0.25 + math.random() * 0.55
-        local px     = zoneData.x + math.cos(angle) * zoneData.radius * rfrac
-        local py     = zoneData.y + math.sin(angle) * zoneData.radius * rfrac
-        local pDef   = powerups[((i - 1) % #powerups) + 1]
-        local gz     = zoneData.z
-        local gFound, gz2 = GetGroundZFor_3dCoord(px, py, gz + 50.0, false)
-        if gFound then gz = gz2 end
-        pickupPoints[i] = { x = px, y = py, z = gz, def = pDef, taken = false, respawnAt = 0 }
+        local angle = (i - 1) * (math.pi * 2 / 6)
+        local rfrac = 0.3 + math.random() * 0.45
+        local px    = zoneData.x + math.cos(angle) * zoneData.radius * rfrac
+        local py    = zoneData.y + math.sin(angle) * zoneData.radius * rfrac
+        local pDef  = powerups[((i - 1) % #powerups) + 1]
+        -- Z será determinado no thread de render (GetGroundZFor_3dCoord precisa de contexto)
+        pickupPoints[i] = { x = px, y = py, z = zoneData.z, groundFound = false, def = pDef, taken = false, respawnAt = 0 }
     end
 
-    -- Desenhar marcadores e detetar colisão
+    Citizen.CreateThread(function()
+        -- Resolver Z no chão a partir do thread
+        Citizen.Wait(1000)
+        for _, p in ipairs(pickupPoints) do
+            local found, gz = GetGroundZFor_3dCoord(p.x, p.y, p.z + 100.0, false)
+            if found then p.z = gz + 0.1 end
+            p.groundFound = true
+        end
+    end)
+
     Citizen.CreateThread(function()
         while powerupActive do
             local myPos = GetEntityCoords(PlayerPedId())
             local now   = GetGameTimer()
 
             for _, p in ipairs(pickupPoints) do
-                -- Respawn após 30s
                 if p.taken and now >= p.respawnAt then
                     p.taken = false
                 end
 
-                if not p.taken then
-                    -- Filtrar por role
+                if not p.taken and p.groundFound then
                     local show = (p.def.role == 'any') or (p.def.role == myRole)
                     if show then
-                        local c = p.def.color
-                        -- Marcador pulsante no chão
-                        DrawMarker(MARKER_TYPE,
+                        local c    = p.def.color
+                        local dist = #(myPos - vector3(p.x, p.y, p.z))
+
+                        -- Marcador circular no chão
+                        DrawMarker(1,
                             p.x, p.y, p.z,
                             0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0,
-                            1.5, 1.5, 0.8,
+                            2.0, 2.0, 0.5,
                             c[1], c[2], c[3], c[4],
                             false, true, 2, nil, nil, false)
+                        -- Seta apontando para baixo por cima
+                        DrawMarker(27,
+                            p.x, p.y, p.z + 2.5,
+                            0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0,
+                            0.7, 0.7, 0.7,
+                            c[1], c[2], c[3], 200,
+                            false, true, 2, nil, nil, false)
 
-                        -- Texto flutuante
-                        local dist = #(myPos - vector3(p.x, p.y, p.z))
-                        if dist < 15.0 then
-                            SetTextScale(0.35, 0.35)
-                            SetTextFont(4)
-                            SetTextProportional(true)
-                            SetTextColour(255, 255, 255, 220)
-                            SetTextEntry('STRING')
-                            AddTextComponentString(p.def.icon .. ' ' .. p.def.label)
-                            DrawText3D(p.x, p.y, p.z + 1.2)
+                        -- Texto 2D no ecrã quando perto
+                        if dist < 20.0 then
+                            local onScreen, sx, sy = World3dToScreen2d(p.x, p.y, p.z + 1.5)
+                            if onScreen then
+                                SetTextFont(4)
+                                SetTextProportional(true)
+                                SetTextScale(0.4, 0.4)
+                                SetTextColour(255, 255, 255, 255)
+                                SetTextOutline()
+                                SetTextEntry('STRING')
+                                AddTextComponentString(p.def.icon .. '  ' .. p.def.label)
+                                DrawText(sx, sy)
+                            end
                         end
 
                         -- Colisão
                         if dist < PICKUP_RADIUS then
-                            p.taken      = true
-                            p.respawnAt  = now + 30000  -- 30s respawn
+                            p.taken     = true
+                            p.respawnAt = now + 30000
                             p.def.effect()
                         end
                     end
@@ -583,21 +647,6 @@ local function startPowerups()
     end)
 end
 
-function DrawText3D(x, y, z)
-    local camCoords = GetGameplayCamCoords()
-    local dist      = #(camCoords - vector3(x, y, z))
-    local scale     = (1 / dist) * 2.0
-    local fov       = (1 / GetGameplayCamFov()) * 100
-    local scale2    = scale * fov
-    SetTextScale(0.0 * scale2, 0.55 * scale2)
-    SetTextFont(4)
-    SetTextProportional(true)
-    SetTextColour(255, 255, 255, 215)
-    SetTextDropShadow()
-    SetTextEntry('STRING')
-    AddTextComponentString('')
-    EndTextCommandDisplayText(x * 1.0, y * 1.0, z * 1.0)
-end
 
 -- ── CAOS PRINCIPAL ────────────────────────────────────────────
 
@@ -621,7 +670,34 @@ local function startChaosZone()
         SetPedDensityMultiplierThisFrame(1.0)
     end)
 
-    -- 2. ONDAS PROGRESSIVAS — só se waveModeActive
+    -- 2. Limpeza de entidades distantes (performance)
+    Citizen.CreateThread(function()
+        while roundActive do
+            Citizen.Wait(20000)  -- verifica a cada 20s
+            if not roundActive then break end
+            local myPos    = GetEntityCoords(PlayerPedId())
+            local MAX_DIST = 350.0
+            local newList  = {}
+            for _, e in ipairs(chaosEntities) do
+                if DoesEntityExist(e) then
+                    local d = #(myPos - GetEntityCoords(e))
+                    if d > MAX_DIST then
+                        -- Parar task antes de apagar
+                        if IsEntityAPed(e) then
+                            ClearPedTasksImmediately(e)
+                        end
+                        SetEntityAsMissionEntity(e, true, true)
+                        DeleteEntity(e)
+                    else
+                        newList[#newList + 1] = e
+                    end
+                end
+            end
+            chaosEntities = newList
+        end
+    end)
+
+    -- 3. ONDAS PROGRESSIVAS — só se waveModeActive
     if waveModeActive then
         Citizen.CreateThread(function()
             Citizen.Wait(8000)
@@ -654,39 +730,79 @@ local function startChaosZone()
                 return v
             end
 
-            -- Helicóptero de ataque
+            -- Helicóptero: normal = dispara mísseis | kamikaze = colide com o ladrão
             local function spawnHeli(kamikaze)
                 local c = GetEntityCoords(PlayerPedId())
                 local a = math.random() * math.pi * 2
-                local heliModels = {'buzzard', 'valkyrie', 'savage', 'annihilator', 'hunter'}
-                local h = GetHashKey(heliModels[math.random(#heliModels)])
-                RequestModel(h); local t=0
-                while not HasModelLoaded(h) and t<40 do Citizen.Wait(100); t=t+1 end
+                -- Modelos: normal usa buzzard/valkyrie (armados), kamikaze qualquer
+                local heliModel = kamikaze
+                    and randomFrom({'buzzard', 'annihilator', 'savage'})
+                    or  randomFrom({'buzzard2', 'valkyrie', 'hunter'})
+                local h = GetHashKey(heliModel)
+                RequestModel(h); local t = 0
+                while not HasModelLoaded(h) and t < 40 do Citizen.Wait(100); t = t + 1 end
                 if not HasModelLoaded(h) then SetModelAsNoLongerNeeded(h); return end
-                local heli = CreateVehicle(h, c.x+math.cos(a)*220, c.y+math.sin(a)*220, c.z+90, 0.0, true, false)
+
+                local spawnDist = kamikaze and 300 or 250
+                local heli = CreateVehicle(h,
+                    c.x + math.cos(a) * spawnDist,
+                    c.y + math.sin(a) * spawnDist,
+                    c.z + 80, 0.0, true, false)
                 SetVehicleEngineOn(heli, true, false, true)
                 SetHeliBladesFullSpeed(heli)
                 SetModelAsNoLongerNeeded(h)
-                local dH = GetHashKey('s_m_y_pilot_01'); RequestModel(dH); t=0
-                while not HasModelLoaded(dH) and t<20 do Citizen.Wait(100); t=t+1 end
+
+                local dH = GetHashKey('s_m_y_pilot_01')
+                RequestModel(dH); t = 0
+                while not HasModelLoaded(dH) and t < 20 do Citizen.Wait(100); t = t + 1 end
                 if HasModelLoaded(dH) then
                     local pilot = CreatePedInsideVehicle(heli, 26, dH, -1, true, false)
-                    RemoveAllPedWeapons(pilot, true)
                     SetModelAsNoLongerNeeded(dH)
-                    chaosEntities[#chaosEntities+1] = pilot
-                    Citizen.CreateThread(function()
-                        local delay = kamikaze and 8000 or 20000
-                        TaskHeliChase(pilot, PlayerPedId(), 0.0, 0.0, 40.0)
-                        Citizen.Wait(delay)
-                        if not roundActive or not DoesEntityExist(heli) then return end
-                        -- Mergulho em direção ao jogador
-                        TaskHeliChase(pilot, PlayerPedId(), 0.0, 0.0, -8.0)
-                        if kamikaze then
-                            notify('🚁 KAMIKAZE!', 'error', 3000)
-                        end
-                    end)
+                    chaosEntities[#chaosEntities + 1] = pilot
+
+                    if kamikaze then
+                        -- Kamikaze: mergulha diretamente no carro do ladrão
+                        notify('🚁 HELI KAMIKAZE EM APROXIMAÇÃO!', 'error', 4000)
+                        Citizen.CreateThread(function()
+                            -- 1ª fase: aproxima-se rapidamente
+                            TaskHeliChase(pilot, PlayerPedId(), 0.0, 0.0, 20.0)
+                            Citizen.Wait(6000)
+                            if not roundActive or not DoesEntityExist(heli) then return end
+                            -- 2ª fase: mergulho suicida direto ao alvo
+                            local target = spawnedVehicle and DoesEntityExist(spawnedVehicle)
+                                and spawnedVehicle or PlayerPedId()
+                            TaskHeliChase(pilot, PlayerPedId(), 0.0, 0.0, -25.0)
+                            Citizen.Wait(2000)
+                            if not roundActive or not DoesEntityExist(heli) then return end
+                            -- 3ª fase: descontrolo total → colidir e explodir
+                            SetVehicleOutOfControl(heli, true, true)
+                            Citizen.Wait(3000)
+                            if DoesEntityExist(heli) then
+                                local hp = GetEntityCoords(heli)
+                                AddExplosion(hp.x, hp.y, hp.z, 2, 5.0, true, false, 1.0)
+                                SetEntityAsMissionEntity(heli, true, true)
+                                DeleteEntity(heli)
+                            end
+                        end)
+                    else
+                        -- Normal: persegue e dispara mísseis homming
+                        local rocketHash = GetHashKey('weapon_hominglauncher')
+                        GiveWeaponToPed(pilot, rocketHash, 20, false, true)
+                        TaskHeliChase(pilot, PlayerPedId(), 0.0, 0.0, 35.0)
+                        Citizen.CreateThread(function()
+                            Citizen.Wait(5000)
+                            while roundActive and DoesEntityExist(heli) and DoesEntityExist(pilot) do
+                                local target = spawnedVehicle and DoesEntityExist(spawnedVehicle)
+                                    and spawnedVehicle or GetVehiclePedIsIn(PlayerPedId(), false)
+                                if DoesEntityExist(target) then
+                                    TaskShootAtEntity(pilot, target, 3000, GetHashKey('FIRING_PATTERN_BURST_FIRE'))
+                                end
+                                Citizen.Wait(8000)
+                            end
+                        end)
+                    end
                 end
-                chaosEntities[#chaosEntities+1] = heli
+                chaosEntities[#chaosEntities + 1] = heli
             end
 
             -- Avião de carga a baixa altitude (passa por cima assustando)
@@ -840,128 +956,85 @@ local function startChaosZone()
                 end
 
                 if myRole == 'robber' then
+                    -- CAP: nunca mais de 8 entidades chaos
+                    local aliveCount = 0
+                    for _, e in ipairs(chaosEntities) do
+                        if DoesEntityExist(e) then aliveCount = aliveCount + 1 end
+                    end
+                    if aliveCount > 16 then Citizen.Wait(5000) end  -- espera se já há muita coisa
+
                     if min == 0 then
-                        -- Min 0: 2 carros leves
-                        spawnChaser(light, 150, 'a_m_y_downtown_01')
-                        Citizen.Wait(3000)
-                        spawnChaser(light, 180, 'a_m_y_downtown_01')
-                        Citizen.Wait(25000)
+                        -- Min 0-1: COMPLETAMENTE CALMO, ladrão tem 2 min para se orientar
+                        Citizen.Wait(60000)
 
                     elseif min == 1 then
-                        -- Min 1: carros rápidos
-                        spawnChaser(medium, 150, 'a_m_y_downtown_01')
-                        Citizen.Wait(3000)
-                        spawnChaser(medium, 200, 'a_m_y_downtown_01')
-                        Citizen.Wait(20000)
+                        -- Min 1: ainda calmo (apenas leve aviso)
+                        if min ~= lastWave - 1 then  -- só notifica na transição
+                            notify('⚠️ A calma está quase a acabar...', 'warning', 5000)
+                        end
+                        Citizen.Wait(60000)
 
                     elseif min == 2 then
-                        -- Min 2: carros pesados x3
-                        for i=1,3 do
-                            spawnChaser(heavy, 150, 'a_m_m_business_01')
-                            Citizen.Wait(2000)
-                        end
-                        Citizen.Wait(15000)
+                        -- Min 2: 1 carro leve de perseguição
+                        spawnChaser(light, 150, 'a_m_y_downtown_01')
+                        Citizen.Wait(30000)
 
                     elseif min == 3 then
-                        -- Min 3: polícia pesada (carros de patrulha + SWAT)
-                        local police = {'police', 'police2', 'police3', 'policet', 'fbi', 'fbi2'}
-                        for i=1,3 do
-                            spawnChaser(police, 160, 's_m_y_cop_01')
-                            Citizen.Wait(1500)
-                        end
-                        Citizen.Wait(12000)
+                        -- Min 3: 1 carro pesado de polícia
+                        local police = {'police', 'police2', 'police3', 'fbi'}
+                        spawnChaser(police, 160, 's_m_y_cop_01')
+                        Citizen.Wait(25000)
 
                     elseif min == 4 then
-                        -- Min 4: blindados (sem armas) + carros pesados
-                        spawnTank(false)
-                        Citizen.Wait(2000)
+                        -- Min 4: 2 carros pesados
                         spawnChaser(heavy, 150, 'a_m_m_business_01')
-                        Citizen.Wait(2000)
+                        Citizen.Wait(3000)
                         spawnChaser(heavy, 180, 'a_m_m_business_01')
-                        Citizen.Wait(12000)
+                        Citizen.Wait(20000)
 
                     elseif min == 5 then
-                        -- Min 5: blindados + 1 heli
+                        -- Min 5: 1 blindado (sem armas) + 1 carro pesado
                         spawnTank(false)
-                        Citizen.Wait(2000)
-                        spawnHeli(false)
-                        Citizen.Wait(2000)
+                        Citizen.Wait(3000)
                         spawnChaser(heavy, 150, 'a_m_m_business_01')
-                        Citizen.Wait(10000)
+                        Citizen.Wait(18000)
 
                     elseif min == 6 then
-                        -- Min 6: tanques ARMADOS + 2 helis
-                        spawnTank(true)
-                        Citizen.Wait(2000)
+                        -- Min 6: 1 heli (mísseis) + 1 carro pesado
                         spawnHeli(false)
-                        Citizen.Wait(2000)
-                        spawnHeli(false)
-                        Citizen.Wait(2000)
+                        Citizen.Wait(3000)
                         spawnChaser(heavy, 150, 's_m_y_swat_01')
-                        Citizen.Wait(8000)
+                        Citizen.Wait(18000)
 
                     elseif min == 7 then
-                        -- Min 7: AVIÕES DE CARGA + tanques + kamikaze heli
-                        spawnCargoBomber()
-                        notify('✈️ AVIÃO DE CARGA DETECTADO!', 'error', 5000)
-                        Citizen.Wait(3000)
+                        -- Min 7: tanque armado + 1 heli
                         spawnTank(true)
-                        Citizen.Wait(2000)
-                        spawnHeli(true)  -- kamikaze
-                        Citizen.Wait(2000)
-                        spawnChaser(heavy, 150, 's_m_y_swat_01')
-                        Citizen.Wait(6000)
+                        Citizen.Wait(3000)
+                        spawnHeli(false)
+                        Citizen.Wait(18000)
 
                     elseif min == 8 then
-                        -- Min 8: camiões enormes + 3 helis + tanque
-                        spawnTruck()
-                        Citizen.Wait(1500)
+                        -- Min 8: 1 heli kamikaze + 1 tanque
                         spawnHeli(true)
-                        Citizen.Wait(1500)
-                        spawnHeli(false)
-                        Citizen.Wait(1500)
-                        spawnHeli(false)
-                        Citizen.Wait(1500)
+                        Citizen.Wait(3000)
                         spawnTank(true)
-                        Citizen.Wait(5000)
+                        Citizen.Wait(15000)
 
                     elseif min == 9 then
-                        -- Min 9: autocarros + tanques + aviões + helis kamikaze
-                        spawnBus()
-                        Citizen.Wait(1500)
-                        spawnBus()
-                        Citizen.Wait(1500)
-                        spawnTank(true)
-                        Citizen.Wait(1500)
-                        spawnHeli(true)
-                        Citizen.Wait(1500)
-                        spawnHeli(true)
-                        Citizen.Wait(1500)
-                        spawnCargoBomber()
-                        Citizen.Wait(4000)
-
-                    elseif min == 10 then
-                        -- Min 10: CAOS MÁXIMO — tudo
-                        spawnTruck(); Citizen.Wait(1000)
-                        spawnBus();   Citizen.Wait(1000)
-                        spawnTank(true); Citizen.Wait(1000)
-                        spawnHeli(true); Citizen.Wait(1000)
-                        spawnHeli(true); Citizen.Wait(1000)
-                        spawnHeli(false); Citizen.Wait(1000)
-                        spawnCargoBomber()
+                        -- Min 9: camião + heli kamikaze
+                        spawnTruck()
                         Citizen.Wait(3000)
+                        spawnHeli(true)
+                        Citizen.Wait(15000)
 
                     else
-                        -- Min 11+: CIDADE + TUDO SEM PARAR
-                        cityRage()
-                        spawnTruck(); Citizen.Wait(800)
-                        spawnBus();   Citizen.Wait(800)
-                        spawnTank(true); Citizen.Wait(800)
-                        spawnHeli(true); Citizen.Wait(800)
-                        spawnHeli(true); Citizen.Wait(800)
-                        spawnHeli(false); Citizen.Wait(800)
-                        spawnCargoBomber()
-                        Citizen.Wait(2000)
+                        -- Min 10+: tanque + heli + autocarro (máx. intensidade)
+                        spawnTank(true)
+                        Citizen.Wait(3000)
+                        spawnHeli(true)
+                        Citizen.Wait(3000)
+                        spawnBus()
+                        Citizen.Wait(12000)
                     end
                 else
                     -- Cops: spawn leve para manter acção
@@ -1286,6 +1359,38 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
         end)
     end
 
+    -- Auto-flip: se o carro do ladrão ficar virado > 5s, endireita automaticamente
+    if role == 'robber' then
+        Citizen.CreateThread(function()
+            local tiltedSince = nil
+            while roundActive and myRole == 'robber' do
+                Citizen.Wait(500)
+                local veh = spawnedVehicle
+                if veh and DoesEntityExist(veh) and GetPedInVehicleSeat(veh, -1) == PlayerPedId() then
+                    local rot      = GetEntityRotation(veh, 1)
+                    local isTilted = math.abs(rot.x) > 70.0 or math.abs(rot.y) > 70.0
+                    if isTilted then
+                        if not tiltedSince then
+                            tiltedSince = GetGameTimer()
+                        elseif (GetGameTimer() - tiltedSince) > 5000 then
+                            local pos = GetEntityCoords(veh)
+                            SetEntityRotation(veh, 0.0, 0.0, GetEntityHeading(veh), 1, true)
+                            SetEntityCoords(veh, pos.x, pos.y, pos.z + 1.5, false, false, false, true)
+                            SetVehicleOnGroundProperly(veh)
+                            notify('\ud83d\udd04 Carro endireitado automaticamente!', 'success', 3000)
+                            tiltedSince = nil
+                        end
+                    else
+                        tiltedSince = nil
+                    end
+                else
+                    tiltedSince = nil
+                end
+            end
+        end)
+    end
+
+
     -- Roadblocks para todos
     if roadblockCount and roadblockCount > 0 then
         spawnRoadblocks(roadblockCount)
@@ -1365,19 +1470,19 @@ end)
 
 AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
     Citizen.CreateThread(function()
-        local me = PlayerPedId()
-        local myC = GetEntityCoords(me)
+        local myC = GetEntityCoords(PlayerPedId())
 
-        -- Posição de spawn: acima do alvo (ou acima do cop se não há alvo)
-        local spawnX = targetCoords and targetCoords.x or myC.x
-        local spawnY = targetCoords and targetCoords.y or myC.y
-        local spawnZ = (targetCoords and targetCoords.z or myC.z) + (heliAlt or 80)
-
-        local hHash = GetHashKey('polmav')
+        -- Heli de apoio de polícia — mais agressivo, dispara mísseis
+        local heliModels = {'hunter', 'valkyrie', 'buzzard2'}
+        local hHash = GetHashKey(randomFrom(heliModels))
         RequestModel(hHash)
         local t = 0
         while not HasModelLoaded(hHash) and t < 30 do Citizen.Wait(100); t = t + 1 end
         if not HasModelLoaded(hHash) then return end
+
+        local spawnX = targetCoords and targetCoords.x or myC.x
+        local spawnY = targetCoords and targetCoords.y or myC.y
+        local spawnZ = (targetCoords and targetCoords.z or myC.z) + (heliAlt or 80)
 
         local heli = CreateVehicle(hHash, spawnX, spawnY, spawnZ, 0.0, true, false)
         SetVehicleEngineOn(heli, true, false, true)
@@ -1388,55 +1493,70 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         RequestModel(pilotHash)
         t = 0
         while not HasModelLoaded(pilotHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
+
         local pilot = nil
         if HasModelLoaded(pilotHash) then
             pilot = CreatePedInsideVehicle(heli, 26, pilotHash, -1, true, false)
-            RemoveAllPedWeapons(pilot, true)
+            -- Armar com mísseis de perseguição
+            local rocketHash = GetHashKey('weapon_hominglauncher')
+            GiveWeaponToPed(pilot, rocketHash, 30, false, true)
             SetModelAsNoLongerNeeded(pilotHash)
         end
 
-        -- Holofote
-        local searchlight = true
-        Citizen.CreateThread(function()
-            local elapsed = 0
-            while roundActive and elapsed < duration and DoesEntityExist(heli) do
-                if searchlight and targetCoords then
-                    -- Seguir posição do alvo (posição estática fornecida pelo server)
-                    SetVehicleSearchlight(heli, true, true)
+        -- Perseguir e disparar ao ladrão
+        if pilot then
+            -- Perseguição ativa do heli
+            local allPlayers = GetActivePlayers()
+            local robberPed  = nil
+            for _, playerId in ipairs(allPlayers) do
+                local ped = GetPlayerPed(playerId)
+                if ped ~= PlayerPedId() then
+                    robberPed = ped
+                    break
                 end
-                Citizen.Wait(500)
-                elapsed = elapsed + 0.5
             end
-            SetVehicleSearchlight(heli, false, false)
+            if robberPed then
+                TaskHeliChase(pilot, robberPed, 0.0, 0.0, 30.0)
+            end
+
+            -- Thread de mísseis: dispara a cada 8s contra o carro do ladrão
+            Citizen.CreateThread(function()
+                local elapsed = 0
+                Citizen.Wait(4000)  -- delay inicial
+                while roundActive and elapsed < duration and DoesEntityExist(heli) and DoesEntityExist(pilot) do
+                    -- Tentar encontrar carro do ladrão
+                    local target = nil
+                    for _, playerId in ipairs(GetActivePlayers()) do
+                        local ped = GetPlayerPed(playerId)
+                        if ped ~= PlayerPedId() and IsPedInAnyVehicle(ped, false) then
+                            target = GetVehiclePedIsIn(ped, false)
+                            break
+                        end
+                    end
+                    if target and DoesEntityExist(target) then
+                        TaskShootAtEntity(pilot, target, 2500, GetHashKey('FIRING_PATTERN_BURST_FIRE'))
+                    end
+                    Citizen.Wait(8000)
+                    elapsed = elapsed + 8
+                end
+            end)
+        end
+
+        -- Holofote
+        Citizen.CreateThread(function()
+            while roundActive and DoesEntityExist(heli) do
+                SetVehicleSearchlight(heli, true, true)
+                Citizen.Wait(500)
+            end
         end)
 
-        -- Fazer o heli circular sobre o alvo
-        if pilot and targetCoords then
-            TaskHeliChase(pilot,
-                -- Não temos ped alvo aqui, circular sobre coordenada
-                -- Usar TASK_HELI_MISSION com ponto fixo
-                pilot, -- dummy, vamos usar TaskHeliMission
-                0.0, 0.0, 40.0)
-        end
-
-        -- Holofote manual + círculo sobre alvo
-        local timer = 0
-        while roundActive and timer < duration and DoesEntityExist(heli) do
-            if targetCoords then
-                SetEntityCoords(heli,
-                    targetCoords.x + math.cos(timer * 0.5) * 30,
-                    targetCoords.y + math.sin(timer * 0.5) * 30,
-                    targetCoords.z + (heliAlt or 80),
-                    false, false, false, false)
-            end
-            SetVehicleSearchlight(heli, true, true)
-            Citizen.Wait(1000)
-            timer = timer + 1
-        end
+        -- Duração total do apoio
+        Citizen.Wait(duration * 1000)
 
         -- Desaparecer
         SetVehicleSearchlight(heli, false, false)
         if pilot and DoesEntityExist(pilot) then
+            ClearPedTasksImmediately(pilot)
             SetEntityAsMissionEntity(pilot, true, true)
             DeleteEntity(pilot)
         end
@@ -1444,9 +1564,10 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
             SetEntityAsMissionEntity(heli, true, true)
             DeleteEntity(heli)
         end
-        notify('🚁 Helicóptero de apoio retirado.', 'primary', 3000)
+        notify('\ud83d\ude81 Helic\u00f3ptero de apoio retirado.', 'primary', 3000)
     end)
 end)
+
 
 AddEventHandler('baseevents:onPlayerDied', function()
     if myRole == 'robber' and roundActive then
