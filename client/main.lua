@@ -454,16 +454,27 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
 
     local ped = PlayerPedId()
 
-    -- 1. Teleporte inicial para a área (z+10 para não ficar preso no chão)
-    SetEntityCoords(ped, spawnCoords.x, spawnCoords.y, spawnCoords.z + 10.0, false, false, false, true)
-    Citizen.Wait(2000)  -- aguardar que o mundo e colisões carreguem
+    -- 1. Teleporte acima da área (z+200 garante acima de qualquer edifício ou terreno)
+    SetEntityCoords(ped, spawnCoords.x, spawnCoords.y, spawnCoords.z + 200.0, false, false, false, true)
+    Citizen.Wait(2500)  -- aguardar colisão e streaming
 
-    -- 2. Encontrar o nó de estrada mais próximo (GARANTE estrada real, sem void nem edifícios)
-    local roadFound, rx, ry, rz = GetClosestVehicleNode(spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, 3.0, 0)
+    -- 2. GetClosestVehicleNode devolve (bool, vector3) no FiveM — desempacotar correctamente
+    local roadFound, nodePos = GetClosestVehicleNode(spawnCoords.x, spawnCoords.y, spawnCoords.z, 0, 3.0, 0)
 
-    local spawnX = roadFound and rx or spawnCoords.x
-    local spawnY = roadFound and ry or spawnCoords.y
-    local spawnZ = roadFound and (rz + 1.0) or spawnCoords.z
+    local spawnX, spawnY, spawnZ
+
+    if roadFound and nodePos then
+        -- nodePos é um vector3
+        spawnX = nodePos.x
+        spawnY = nodePos.y
+        spawnZ = nodePos.z + 1.0
+    else
+        -- Fallback: usar GetGroundZFor_3dCoord para pelo menos acertar o Z
+        spawnX = spawnCoords.x
+        spawnY = spawnCoords.y
+        local ok, gz = GetGroundZFor_3dCoord(spawnCoords.x, spawnCoords.y, spawnCoords.z + 100.0, false)
+        spawnZ = ok and (gz + 1.0) or spawnCoords.z
+    end
 
     SetEntityCoords(ped, spawnX, spawnY, spawnZ, false, false, false, true)
     SetEntityHeading(ped, spawnCoords.w)
