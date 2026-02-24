@@ -174,9 +174,16 @@ end
 
 local function cleanupChaos()
     for _, e in ipairs(chaosEntities) do
-        if DoesEntityExist(e) then DeleteEntity(e) end
+        if DoesEntityExist(e) then
+            -- Para entidades networked, pedir controlo antes de apagar
+            SetEntityAsMissionEntity(e, true, true)
+            NetworkRequestControlOfEntity(e)
+            DeleteEntity(e)
+        end
     end
     chaosEntities = {}
+    rampCount     = 0
+    rampList      = {}
 end
 
 -- ── Spawn de rampa numa posição de estrada ───────────────────
@@ -306,8 +313,7 @@ local function startChaosZone()
         SetPedDensityMultiplierThisFrame(1.0)
     end)
 
-    -- 3. Rampas dinâmicas progressivas — sempre na estrada, perto do jogador
-    --    Quanto mais tempo passa: mais rampas, mais perto
+    -- 3. Rampas dinâmicas — só nas laterais e atrás do jogador (nunca à frente)
     Citizen.CreateThread(function()
         Citizen.Wait(4000)
         local startTime = GetGameTimer()
@@ -315,33 +321,36 @@ local function startChaosZone()
         while roundActive do
             local elapsed = (GetGameTimer() - startTime) / 1000
 
-            -- Frequência e proximidade escalam com o tempo
             local interval, batch, minDist, maxDist
-            if     elapsed < 60  then interval, batch, minDist, maxDist = 20000, 1, 100, 200  -- 0–1 min
-            elseif elapsed < 180 then interval, batch, minDist, maxDist = 12000, 2,  70, 160  -- 1–3 min
-            elseif elapsed < 360 then interval, batch, minDist, maxDist =  7000, 3,  40, 110  -- 3–6 min
-            elseif elapsed < 540 then interval, batch, minDist, maxDist =  4000, 4,  20,  80  -- 6–9 min
-            else                      interval, batch, minDist, maxDist =  2500, 5,  10,  50  -- 9+ min
+            if     elapsed < 60  then interval, batch, minDist, maxDist = 30000, 1, 80, 180   -- 0–1 min
+            elseif elapsed < 180 then interval, batch, minDist, maxDist = 18000, 1, 60, 140   -- 1–3 min
+            elseif elapsed < 360 then interval, batch, minDist, maxDist = 10000, 2, 40, 100   -- 3–6 min
+            elseif elapsed < 540 then interval, batch, minDist, maxDist =  6000, 2, 25,  80   -- 6–9 min
+            else                      interval, batch, minDist, maxDist =  4000, 3, 15,  60   -- 9+ min
             end
 
-            -- Tamanho varia por ciclo
             local sizes = {'small', 'medium', 'large'}
 
             for i = 1, batch do
                 if not roundActive then break end
                 local pedCoords = GetEntityCoords(PlayerPedId())
-                local angle     = math.random() * math.pi * 2
-                local dist      = math.random(minDist, maxDist)
-                local tx        = pedCoords.x + math.cos(angle) * dist
-                local ty        = pedCoords.y + math.sin(angle) * dist
 
-                -- GetClosestVehicleNode funciona porque estamos perto do jogador (terreno carregado)
+                -- Calcular direção PARA O LADO / ATRÁS (evitar frente ±70°)
+                local fwd   = GetEntityForwardVector(PlayerPedId())
+                local fwdAng = math.atan(fwd.y, fwd.x)
+                -- Offset entre 70° e 290° (exclui arco frontal de ±70°)
+                local offsetRad = math.rad(math.random(70, 290))
+                local spawnAng  = fwdAng + offsetRad
+                local dist      = math.random(minDist, maxDist)
+                local tx        = pedCoords.x + math.cos(spawnAng) * dist
+                local ty        = pedCoords.y + math.sin(spawnAng) * dist
+
                 local roadFound, nodePos = GetClosestVehicleNode(tx, ty, pedCoords.z, 0, 3.0, 0)
                 if roadFound and nodePos then
                     local sz = sizes[((rampCount) % 3) + 1]
                     spawnRampOnRoad(nodePos.x, nodePos.y, nodePos.z, sz)
                 end
-                Citizen.Wait(600)
+                Citizen.Wait(700)
             end
 
             Citizen.Wait(interval)
@@ -373,6 +382,105 @@ local function startChaosZone()
             Citizen.Wait(interval)
         end
     end)
+
+    -- 5. Carjackers e Tanques (apenas para ladrão)
+    if myRole == 'robber' then
+
+        -- Carjackers a pé que tentam tirar o ladrão do carro
+        Citizen.CreateThread(function()
+            local jackModels = {'g_m_y_lost_01', 'g_m_y_ballasout_01', 'g_m_y_vagos_01'}
+            local startTime2 = GetGameTimer()
+            while roundActive do
+                local elapsed = (GetGameTimer() - startTime2) / 1000
+                local interval = elapsed < 120 and 90000 or (elapsed < 300 and 50000 or 30000)
+                Citizen.Wait(interval)
+                if not roundActive then break end
+
+                -- Spawnar 1-2 carjackers perto do jogador
+                local count = elapsed < 180 and 1 or 2
+                for _ = 1, count do
+                    local coords = GetEntityCoords(PlayerPedId())
+                    local angle  = math.random() * math.pi * 2
+                    local px     = coords.x + math.cos(angle) * math.random(15, 35)
+                    local py     = coords.y + math.sin(angle) * math.random(15, 35)
+                    local ok, gz = GetGroundZFor_3dCoord(px, py, coords.z + 50, false)
+                    if ok then
+                        local pHash = GetHashKey(jackModels[math.random(#jackModels)])
+                        RequestModel(pHash)
+                        local t = 0
+                        while not HasModelLoaded(pHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
+                        if HasModelLoaded(pHash) then
+                            local ped = CreatePed(4, pHash, px, py, gz, 0.0, true, false)
+                            -- Dar apenas faca (corpo a corpo, sem tiros)
+                            GiveWeaponToPed(ped, GetHashKey('WEAPON_KNIFE'), 1, false, true)
+                            SetPedFleeAttributes(ped, 0, false)
+                            SetPedCombatAttributes(ped, 46, true)
+                            -- Tentar entrar no carro (carjack)
+                            if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
+                                TaskEnterVehicle(ped, spawnedVehicle, 10000, -1, 2.0, 6, 0)
+                            else
+                                TaskCombatPed(ped, PlayerPedId(), 0, 16)
+                            end
+                            SetModelAsNoLongerNeeded(pHash)
+                            chaosEntities[#chaosEntities + 1] = ped
+                        end
+                    end
+                    Citizen.Wait(500)
+                end
+            end
+        end)
+
+        -- Tanques que perseguem (sem canhao — só abalroam)
+        Citizen.CreateThread(function()
+            local tankModels = {'rhino', 'insurgent', 'apc'}
+            local startTime3 = GetGameTimer()
+            while roundActive do
+                local elapsed = (GetGameTimer() - startTime3) / 1000
+                -- Primeiro tanque após 3 minutos; depois a cada 2 minutos
+                local interval = elapsed < 180 and 180000 or 120000
+                Citizen.Wait(interval)
+                if not roundActive then break end
+
+                local coords = GetEntityCoords(PlayerPedId())
+                local angle  = math.random() * math.pi * 2
+                local px     = coords.x + math.cos(angle) * math.random(150, 250)
+                local py     = coords.y + math.sin(angle) * math.random(150, 250)
+                RequestCollisionAtCoord(px, py, coords.z)
+                Citizen.Wait(300)
+                local ok, gz = GetGroundZFor_3dCoord(px, py, coords.z + 50, false)
+                if not ok then goto skipTank end
+
+                local tModel = tankModels[math.random(#tankModels)]
+                local tHash  = GetHashKey(tModel)
+                RequestModel(tHash)
+                local t = 0
+                while not HasModelLoaded(tHash) and t < 30 do Citizen.Wait(100); t = t + 1 end
+                if HasModelLoaded(tHash) then
+                    local tank = CreateVehicle(tHash, px, py, gz + 1.0, math.random(0,359)*1.0, true, false)
+                    SetVehicleEngineOn(tank, true, false, true)
+                    SetModelAsNoLongerNeeded(tHash)
+
+                    local dHash = GetHashKey('s_m_y_cop_01')
+                    RequestModel(dHash)
+                    t = 0
+                    while not HasModelLoaded(dHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
+                    if HasModelLoaded(dHash) then
+                        local driver = CreatePedInsideVehicle(tank, 26, dHash, -1, true, false)
+                        -- Sem armas = sem tiros de canhão
+                        RemoveAllPedWeapons(driver, true)
+                        SetDriverAggressiveness(driver, 1.0)
+                        SetDriverAbility(driver, 1.0)
+                        TaskVehicleChase(driver, PlayerPedId())
+                        SetModelAsNoLongerNeeded(dHash)
+                        chaosEntities[#chaosEntities + 1] = driver
+                        notify('🪖 TANQUE na perseguição!', 'error', 5000)
+                    end
+                    chaosEntities[#chaosEntities + 1] = tank
+                end
+                ::skipTank::
+            end
+        end)
+    end
 end
 
 
@@ -591,7 +699,35 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
         Citizen.Wait(5000)
         if roundActive then
             startChaosZone()
-            notify('🔥 CAOS: ' .. #Config.rampPositions .. ' rampas activadas! Carros agressivos em patrulha!', 'warning', 6000)
+            notify('🔥 CAOS ACTIVADO! Rampas, carros e surpresas pela cidade!', 'warning', 6000)
+        end
+    end)
+
+    -- Thread de reparação periódica (rodas e durabilidade) — a cada 60s
+    Citizen.CreateThread(function()
+        while roundActive do
+            Citizen.Wait(60000)  -- 1 minuto
+            if not roundActive then break end
+            local veh = spawnedVehicle
+            if veh and DoesEntityExist(veh) then
+                -- Reparar rodas (todas as 8 possíveis)
+                for wheel = 0, 7 do
+                    if IsVehicleTyreBurst(veh, wheel, false) then
+                        SetVehicleTyreBurst(veh, wheel, false, 1000.0)
+                        SetVehicleTyreFixed(veh, wheel)
+                    end
+                end
+                -- Manter motor e carroçaria em bom estado (mínimo 800)
+                if GetVehicleEngineHealth(veh) < 800.0 then
+                    SetVehicleEngineHealth(veh, 800.0)
+                end
+                if GetVehicleBodyHealth(veh) < 800.0 then
+                    SetVehicleBodyHealth(veh, 800.0)
+                end
+                -- Impedir rodas de rebentar facilmente
+                SetVehicleWheelsCanBreak(veh, false)
+                notify('🔧 Veículo reparado automaticamente!', 'success', 3000)
+            end
         end
     end)
 end)
