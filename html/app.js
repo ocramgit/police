@@ -29,6 +29,8 @@ const waveBadge = document.getElementById('wave-badge');
 const waveLabel = document.getElementById('wave-label');
 const waveIcon = document.getElementById('wave-icon');
 const killFeed = document.getElementById('kill-feed');
+const keybindsPanel = document.getElementById('keybinds-panel');
+const keybindsList = document.getElementById('keybinds-list');
 
 const CIRCUMFERENCE = 213.63;
 
@@ -280,6 +282,9 @@ window.addEventListener('message', function (event) {
 
             robberCount.classList.remove('hidden');
             hud.classList.remove('hidden');
+
+            // Mostrar keybinds panel por role
+            showKeybinds(data.role);
             break;
         }
 
@@ -324,7 +329,35 @@ window.addEventListener('message', function (event) {
             // Limpar kill feed
             killFeed.innerHTML = '';
             kfActiveItems = 0;
+            // Esconder keybinds
+            keybindsPanel.classList.add('hidden');
             break;
         }
     }
 });
+
+// ══ Keybinds Panel ═══════════════════════════════════
+
+const allKeybinds = {
+    cop: [
+        { key: 'G', label: 'Algemar' },
+        { key: 'H', label: 'Heli Apoio' },
+        { key: 'J', label: 'Drone' },
+        { key: '/flip', label: 'Endireitar carro' },
+    ],
+    robber: [
+        { key: '/flip', label: 'Endireitar carro' },
+    ]
+};
+
+function showKeybinds(role) {
+    const binds = allKeybinds[role] || [];
+    if (binds.length === 0) {
+        keybindsPanel.classList.add('hidden');
+        return;
+    }
+    keybindsList.innerHTML = binds.map(b =>
+        `<div class="kb-row"><kbd>${b.key}</kbd><span>${b.label}</span></div>`
+    ).join('');
+    keybindsPanel.classList.remove('hidden');
+}

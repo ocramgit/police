@@ -656,3 +656,62 @@ kbd {
         transform: translateX(-10px);
     }
 }
+
+/* ═══════════════════════════════════════
+   KEYBINDS PANEL
+   ═══════════════════════════════════════ */
+
+#keybinds-panel {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(10, 10, 20, 0.65);
+    backdrop-filter: blur(14px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    min-width: 130px;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+    z-index: 40;
+}
+
+#keybinds-panel.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+}
+
+#keybinds-title {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.35);
+    margin-bottom: 2px;
+}
+
+.kb-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.kb-row kbd {
+    min-width: 18px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 10px;
+    font-weight: 800;
+    color: #fff;
+}
