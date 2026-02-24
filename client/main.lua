@@ -1377,7 +1377,7 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
                             SetEntityRotation(veh, 0.0, 0.0, GetEntityHeading(veh), 1, true)
                             SetEntityCoords(veh, pos.x, pos.y, pos.z + 1.5, false, false, false, true)
                             SetVehicleOnGroundProperly(veh)
-                            notify('\ud83d\udd04 Carro endireitado automaticamente!', 'success', 3000)
+                            notify('🔄 Carro endireitado automaticamente!', 'success', 3000)
                             tiltedSince = nil
                         end
                     else
@@ -1564,7 +1564,7 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
             SetEntityAsMissionEntity(heli, true, true)
             DeleteEntity(heli)
         end
-        notify('\ud83d\ude81 Helic\u00f3ptero de apoio retirado.', 'primary', 3000)
+        notify('🚁 Helicóptero de apoio retirado.', 'primary', 3000)
     end)
 end)
 
