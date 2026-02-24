@@ -294,6 +294,15 @@ local function spawnChaseVehicle()
     chaosEntities[#chaosEntities + 1] = veh
 end
 
+-- ── Utilitário de estrada perto ────────────────────────────────
+
+local function roadNear(dist)
+    local c = GetEntityCoords(PlayerPedId())
+    local a = math.random() * math.pi * 2
+    local ok, nd = GetClosestVehicleNode(c.x + math.cos(a)*dist, c.y + math.sin(a)*dist, c.z, 0, 3.0, 0)
+    return (ok and nd) or nil
+end
+
 -- ── CAOS PRINCIPAL ────────────────────────────────────────────
 
 local function startChaosZone()
@@ -379,206 +388,215 @@ local function startChaosZone()
         end
     end)
 
-    -- 4. Ondas de carros agressivos — escalam com o tempo
+    -- 4. ONDAS PROGRESSIVAS — dificuldade escala por minuto
     Citizen.CreateThread(function()
         Citizen.Wait(8000)
-        local startTime = GetGameTimer()
+        local waveStart = GetGameTimer()
 
+        -- ── Funções de spawn ─────────────────────────────────
+
+        local function makeCar(models, dist)
+            local nd = roadNear(dist or math.random(100, 200))
+            if not nd then return end
+            local h = GetHashKey(models[math.random(#models)])
+            RequestModel(h); local t=0
+            while not HasModelLoaded(h) and t<25 do Citizen.Wait(100); t=t+1 end
+            if not HasModelLoaded(h) then return end
+            local v = CreateVehicle(h, nd.x, nd.y, nd.z+0.5, math.random(0,359)*1.0, true, false)
+            SetVehicleEngineOn(v, true, false, true); SetModelAsNoLongerNeeded(h)
+            local dH = GetHashKey('a_m_y_downtown_01'); RequestModel(dH); t=0
+            while not HasModelLoaded(dH) and t<15 do Citizen.Wait(100); t=t+1 end
+            if HasModelLoaded(dH) then
+                local d = CreatePedInsideVehicle(v, 26, dH, -1, true, false)
+                SetDriverAggressiveness(d,1.0); SetDriverAbility(d,1.0)
+                TaskVehicleChase(d, PlayerPedId()); SetModelAsNoLongerNeeded(dH)
+                chaosEntities[#chaosEntities+1] = d
+            end
+            chaosEntities[#chaosEntities+1] = v
+        end
+
+        local function makeTank(models, armed)
+            local nd = roadNear(math.random(150, 250))
+            if not nd then return end
+            local h = GetHashKey(models[math.random(#models)])
+            RequestModel(h); local t=0
+            while not HasModelLoaded(h) and t<40 do Citizen.Wait(100); t=t+1 end
+            if not HasModelLoaded(h) then return end
+            local v = CreateVehicle(h, nd.x, nd.y, nd.z+1.0, math.random(0,359)*1.0, true, false)
+            SetVehicleEngineOn(v, true, false, true); SetModelAsNoLongerNeeded(h)
+            local dH = GetHashKey('s_m_y_swat_01'); RequestModel(dH); t=0
+            while not HasModelLoaded(dH) and t<20 do Citizen.Wait(100); t=t+1 end
+            if HasModelLoaded(dH) then
+                local d = CreatePedInsideVehicle(v, 26, dH, -1, true, false)
+                if not armed then RemoveAllPedWeapons(d, true) end
+                SetDriverAggressiveness(d,1.0); SetDriverAbility(d,1.0)
+                TaskVehicleChase(d, PlayerPedId()); SetModelAsNoLongerNeeded(dH)
+                chaosEntities[#chaosEntities+1] = d
+            end
+            chaosEntities[#chaosEntities+1] = v
+        end
+
+        local function makeHeli()
+            local c = GetEntityCoords(PlayerPedId())
+            local a = math.random() * math.pi * 2
+            local helis = {'buzzard', 'valkyrie', 'savage'}
+            local h = GetHashKey(helis[math.random(#helis)])
+            RequestModel(h); local t=0
+            while not HasModelLoaded(h) and t<40 do Citizen.Wait(100); t=t+1 end
+            if not HasModelLoaded(h) then return end
+            local heli = CreateVehicle(h, c.x+math.cos(a)*200, c.y+math.sin(a)*200, c.z+80, 0.0, true, false)
+            SetVehicleEngineOn(heli, true, false, true); SetHeliBladesFullSpeed(heli); SetModelAsNoLongerNeeded(h)
+            local dH = GetHashKey('s_m_y_pilot_01'); RequestModel(dH); t=0
+            while not HasModelLoaded(dH) and t<20 do Citizen.Wait(100); t=t+1 end
+            if HasModelLoaded(dH) then
+                local pilot = CreatePedInsideVehicle(heli, 26, dH, -1, true, false)
+                RemoveAllPedWeapons(pilot, true); SetModelAsNoLongerNeeded(dH)
+                chaosEntities[#chaosEntities+1] = pilot
+                Citizen.CreateThread(function()
+                    TaskHeliChase(pilot, PlayerPedId(), 0.0, 0.0, 40.0)
+                    Citizen.Wait(15000)
+                    if not roundActive or not DoesEntityExist(heli) then return end
+                    TaskHeliChase(pilot, PlayerPedId(), 0.0, 0.0, -5.0)
+                    notify('🚁 HELICÓPTERO EM KAMIKAZE!', 'error', 4000)
+                end)
+            end
+            chaosEntities[#chaosEntities+1] = heli
+        end
+
+        local function makeTruck()
+            local nd = roadNear(math.random(80, 180))
+            if not nd then return end
+            local trucks = {'phantom', 'packer', 'hauler', 'mixer', 'flatbed'}
+            local h = GetHashKey(trucks[math.random(#trucks)])
+            RequestModel(h); local t=0
+            while not HasModelLoaded(h) and t<30 do Citizen.Wait(100); t=t+1 end
+            if not HasModelLoaded(h) then return end
+            local v = CreateVehicle(h, nd.x, nd.y, nd.z+0.5, math.random(0,359)*1.0, true, false)
+            SetVehicleEngineOn(v, true, false, true); SetModelAsNoLongerNeeded(h)
+            local dH = GetHashKey('s_m_m_trucker_01'); RequestModel(dH); t=0
+            while not HasModelLoaded(dH) and t<15 do Citizen.Wait(100); t=t+1 end
+            if HasModelLoaded(dH) then
+                local d = CreatePedInsideVehicle(v, 26, dH, -1, true, false)
+                SetDriverAggressiveness(d,1.0); SetDriverAbility(d,1.0)
+                TaskVehicleChase(d, PlayerPedId()); SetModelAsNoLongerNeeded(dH)
+                chaosEntities[#chaosEntities+1] = d
+            end
+            chaosEntities[#chaosEntities+1] = v
+        end
+
+        local cityRageOn = false
+        local function cityRage()
+            if cityRageOn then return end
+            cityRageOn = true
+            notify('🌋 TODA A CIDADE ESTÁ ATRÁS DE TI!', 'error', 8000)
+            Citizen.CreateThread(function()
+                while roundActive do
+                    local me = PlayerPedId()
+                    for _, p in ipairs(GetGamePool('CPed')) do
+                        if p ~= me and not IsPedAPlayer(p) and not IsPedDeadOrDying(p, true) then
+                            local d = #(GetEntityCoords(me) - GetEntityCoords(p))
+                            if d < 80.0 then
+                                SetPedFleeAttributes(p, 0, false)
+                                SetPedCombatAttributes(p, 46, true)
+                                SetPedCombatAttributes(p, 5, true)
+                                GiveWeaponToPed(p, GetHashKey('WEAPON_BAT'), 1, false, true)
+                                TaskCombatPed(p, me, 0, 16)
+                            end
+                        end
+                    end
+                    Citizen.Wait(3000)
+                end
+            end)
+        end
+
+        -- ── Listas de modelos ────────────────────────────────
+        local light  = {'blista', 'issi2', 'prairie', 'dilettante'}
+        local heavy  = {'granger', 'baller2', 'guardian', 'dubsta2', 'dominator'}
+        local noGun  = {'insurgent2', 'insurgent3', 'barrage', 'insurgent'}
+        local armed  = {'rhino', 'khanjali', 'apc'}
+
+        local lastWave = -1
+
+        -- ── Loop principal de ondas ──────────────────────────
         while roundActive do
-            local elapsed = (GetGameTimer() - startTime) / 1000
+            local sec = (GetGameTimer() - waveStart) / 1000
+            local min = math.floor(sec / 60)
 
-            local interval, batch
-            if     elapsed < 60  then interval, batch = 30000, 1
-            elseif elapsed < 180 then interval, batch = 20000, 2
-            elseif elapsed < 360 then interval, batch = 14000, 3
-            elseif elapsed < 540 then interval, batch = 10000, 4
-            else                      interval, batch =  7000, 5
+            if min > lastWave then
+                lastWave = min
+                if     min == 2  then notify('⚡ ONDA 2: Carros pesados!', 'warning', 5000)
+                elseif min == 4  then notify('⚡ ONDA 3: Tanques!', 'warning', 5000)
+                elseif min == 6  then notify('💀 ONDA 4: Tanques QUE DISPARAM!', 'error', 5000)
+                elseif min == 8  then notify('🚁 ONDA 5: HELICÓPTEROS!', 'error', 5000)
+                elseif min == 10 then notify('🚛 ONDA 6: CAMIÕES!', 'error', 5000)
+                elseif min == 12 then notify('🌋 ONDA FINAL: TODA A CIDADE!', 'error', 8000)
+                end
             end
 
-            if myRole == 'robber' then batch = batch + 1 end
-
-            for _ = 1, batch do
-                spawnChaseVehicle()
-                Citizen.Wait(800)
+            if myRole == 'robber' then
+                if     min < 2  then makeCar(light);                           Citizen.Wait(45000)
+                elseif min < 4  then makeCar(heavy);                           Citizen.Wait(30000)
+                elseif min < 6  then makeTank(noGun, false); Citizen.Wait(3000); makeCar(heavy); Citizen.Wait(35000)
+                elseif min < 8  then makeTank(armed, true);  Citizen.Wait(3000); makeCar(heavy); Citizen.Wait(30000)
+                elseif min < 10 then makeHeli(); Citizen.Wait(3000); makeTank(armed, true);      Citizen.Wait(22000)
+                elseif min < 12 then makeTruck(); Citizen.Wait(2000); makeHeli(); Citizen.Wait(2000); makeTank(armed, true); Citizen.Wait(14000)
+                else                 cityRage(); makeTruck(); Citizen.Wait(1500); makeHeli(); Citizen.Wait(1500); makeTank(armed, true); Citizen.Wait(1500); makeCar(heavy); Citizen.Wait(8000)
+                end
+            else
+                makeCar(light); Citizen.Wait(60000)
             end
-            Citizen.Wait(interval)
         end
     end)
 
-    -- 5. Carjackers e Tanques (apenas para ladrão)
+    -- 5. Carros de PROTEÇÃO do ladrão — invencíveis, perseguem polícia
     if myRole == 'robber' then
-
-        -- Carjackers a pé que tentam tirar o ladrão do carro
-        Citizen.CreateThread(function()
-            local jackModels = {'g_m_y_lost_01', 'g_m_y_ballasout_01', 'g_m_y_vagos_01'}
-            local startTime2 = GetGameTimer()
-            while roundActive do
-                local elapsed = (GetGameTimer() - startTime2) / 1000
-                local interval = elapsed < 120 and 90000 or (elapsed < 300 and 50000 or 30000)
-                Citizen.Wait(interval)
-                if not roundActive then break end
-
-                -- Spawnar 1-2 carjackers perto do jogador
-                local count = elapsed < 180 and 1 or 2
-                for _ = 1, count do
-                    local coords = GetEntityCoords(PlayerPedId())
-                    local angle  = math.random() * math.pi * 2
-                    local px     = coords.x + math.cos(angle) * math.random(15, 35)
-                    local py     = coords.y + math.sin(angle) * math.random(15, 35)
-                    local ok, gz = GetGroundZFor_3dCoord(px, py, coords.z + 50, false)
-                    if ok then
-                        local pHash = GetHashKey(jackModels[math.random(#jackModels)])
-                        RequestModel(pHash)
-                        local t = 0
-                        while not HasModelLoaded(pHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
-                        if HasModelLoaded(pHash) then
-                            local ped = CreatePed(4, pHash, px, py, gz, 0.0, true, false)
-                            -- Dar apenas faca (corpo a corpo, sem tiros)
-                            GiveWeaponToPed(ped, GetHashKey('WEAPON_KNIFE'), 1, false, true)
-                            SetPedFleeAttributes(ped, 0, false)
-                            SetPedCombatAttributes(ped, 46, true)
-                            -- Tentar entrar no carro (carjack)
-                            if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
-                                TaskEnterVehicle(ped, spawnedVehicle, 10000, -1, 2.0, 6, 0)
-                            else
-                                TaskCombatPed(ped, PlayerPedId(), 0, 16)
-                            end
-                            SetModelAsNoLongerNeeded(pHash)
-                            chaosEntities[#chaosEntities + 1] = ped
-                        end
-                    end
-                    Citizen.Wait(500)
-                end
-            end
-        end)
-
-        -- Tanques que perseguem (sem canhão — só abalroam)
-        Citizen.CreateThread(function()
-            -- Modelos GARANTIDOS no base game / disponíveis
-            local tankModels = {'insurgent2', 'insurgent3', 'barrage', 'insurgent'}
-            Citizen.Wait(120000)  -- primeiro tanque após 2 minutos
-            while roundActive do
-                local coords = GetEntityCoords(PlayerPedId())
-                local angle  = math.random() * math.pi * 2
-                local dist   = math.random(150, 250)
-                local px     = coords.x + math.cos(angle) * dist
-                local py     = coords.y + math.sin(angle) * dist
-
-                -- Usar GetClosestVehicleNode (mais fiável, terreno carregado perto)
-                local roadOk, nodePos = GetClosestVehicleNode(px, py, coords.z, 0, 3.0, 0)
-                if not roadOk or not nodePos then goto skipTank end
-
-                do
-                    local tModel = tankModels[math.random(#tankModels)]
-                    local tHash  = GetHashKey(tModel)
-                    RequestModel(tHash)
-                    local t = 0
-                    while not HasModelLoaded(tHash) and t < 40 do Citizen.Wait(100); t = t + 1 end
-                    if not HasModelLoaded(tHash) then SetModelAsNoLongerNeeded(tHash); goto skipTank end
-
-                    local tank = CreateVehicle(tHash, nodePos.x, nodePos.y, nodePos.z + 1.0, math.random(0,359)*1.0, true, false)
-                    SetVehicleEngineOn(tank, true, false, true)
-                    SetModelAsNoLongerNeeded(tHash)
-
-                    local dHash = GetHashKey('s_m_y_swat_01')
-                    RequestModel(dHash)
-                    t = 0
-                    while not HasModelLoaded(dHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
-                    if HasModelLoaded(dHash) then
-                        local driver = CreatePedInsideVehicle(tank, 26, dHash, -1, true, false)
-                        RemoveAllPedWeapons(driver, true)
-                        SetDriverAggressiveness(driver, 1.0)
-                        SetDriverAbility(driver, 1.0)
-                        TaskVehicleChase(driver, PlayerPedId())
-                        SetModelAsNoLongerNeeded(dHash)
-                        chaosEntities[#chaosEntities + 1] = driver
-                        notify('🚛 BLINDADO na perseguição!', 'error', 5000)
-                    end
-                    chaosEntities[#chaosEntities + 1] = tank
-                end
-                ::skipTank::
-                -- Próximo tanque a cada 90s
-                Citizen.Wait(90000)
-            end
-        end)
-
-        -- Carros de PROTEÇÃO — 5-10 carros invencíveis que atrapalham as polícias
         Citizen.CreateThread(function()
             Citizen.Wait(3000)
-            local protectModels = {'baller2', 'granger', 'guardian', 'dubsta2', 'mesa'}
-            local numProtect    = math.random(5, 10)
-
+            local pModels    = {'baller2', 'granger', 'guardian', 'dubsta2', 'mesa'}
+            local numProtect = math.random(5, 10)
             for i = 1, numProtect do
                 if not roundActive then break end
-                local coords = GetEntityCoords(PlayerPedId())
-                local angle  = math.random() * math.pi * 2
-                local dist   = math.random(30, 80)
-                local px     = coords.x + math.cos(angle) * dist
-                local py     = coords.y + math.sin(angle) * dist
-
-                local roadOk, nodePos = GetClosestVehicleNode(px, py, coords.z, 0, 3.0, 0)
-                if not roadOk or not nodePos then goto skipProtect end
-
+                local nd = roadNear(math.random(30, 80))
+                if not nd then goto skipP end
                 do
-                    local cModel = protectModels[math.random(#protectModels)]
-                    local cHash  = GetHashKey(cModel)
-                    RequestModel(cHash)
-                    local t = 0
-                    while not HasModelLoaded(cHash) and t < 25 do Citizen.Wait(100); t = t + 1 end
-                    if not HasModelLoaded(cHash) then SetModelAsNoLongerNeeded(cHash); goto skipProtect end
-
-                    local pCar = CreateVehicle(cHash, nodePos.x, nodePos.y, nodePos.z + 0.5, math.random(0,359)*1.0, true, false)
-                    SetVehicleEngineOn(pCar, true, false, true)
-                    SetModelAsNoLongerNeeded(cHash)
-
-                    -- INVENCÍVEL
-                    SetEntityInvincible(pCar, true)
-                    SetVehicleCanBeVisiblyDamaged(pCar, false)
-                    SetVehicleWheelsCanBreak(pCar, false)
-
-                    local dHash = GetHashKey('g_m_y_lost_02')
-                    RequestModel(dHash)
-                    t = 0
-                    while not HasModelLoaded(dHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
-                    if HasModelLoaded(dHash) then
-                        local driver = CreatePedInsideVehicle(pCar, 26, dHash, -1, true, false)
-                        RemoveAllPedWeapons(driver, true)
-                        SetEntityInvincible(driver, true)
-                        SetDriverAggressiveness(driver, 1.0)
-                        SetDriverAbility(driver, 1.0)
-                        SetModelAsNoLongerNeeded(dHash)
-                        chaosEntities[#chaosEntities + 1] = driver
+                    local h = GetHashKey(pModels[math.random(#pModels)])
+                    RequestModel(h); local t=0
+                    while not HasModelLoaded(h) and t<25 do Citizen.Wait(100); t=t+1 end
+                    if not HasModelLoaded(h) then goto skipP end
+                    local pc = CreateVehicle(h, nd.x, nd.y, nd.z+0.5, math.random(0,359)*1.0, true, false)
+                    SetVehicleEngineOn(pc, true, false, true); SetModelAsNoLongerNeeded(h)
+                    SetEntityInvincible(pc, true); SetVehicleCanBeVisiblyDamaged(pc, false); SetVehicleWheelsCanBreak(pc, false)
+                    local dH = GetHashKey('g_m_y_lost_02'); RequestModel(dH); t=0
+                    while not HasModelLoaded(dH) and t<20 do Citizen.Wait(100); t=t+1 end
+                    if HasModelLoaded(dH) then
+                        local dr = CreatePedInsideVehicle(pc, 26, dH, -1, true, false)
+                        RemoveAllPedWeapons(dr, true); SetEntityInvincible(dr, true)
+                        SetDriverAggressiveness(dr,1.0); SetDriverAbility(dr,1.0); SetModelAsNoLongerNeeded(dH)
+                        chaosEntities[#chaosEntities+1] = dr
                     end
-                    chaosEntities[#chaosEntities + 1] = pCar
-
-                    -- Thread: este carro persegue a polícia mais próxima do ladrão
+                    chaosEntities[#chaosEntities+1] = pc
                     Citizen.CreateThread(function()
-                        while roundActive and DoesEntityExist(pCar) do
-                            -- Encontrar o ped mais próximo que NÃO é o jogador
-                            local pCoords = GetEntityCoords(PlayerPedId())
-                            local closest, closestDist = 0, 999999
-                            for _, ped in ipairs(GetGamePool('CPed')) do
-                                if ped ~= PlayerPedId() and IsPedAPlayer(ped) then
-                                    local d = #(pCoords - GetEntityCoords(ped))
-                                    if d < closestDist then closest = ped; closestDist = d end
+                        while roundActive and DoesEntityExist(pc) do
+                            local closest, cD = 0, 999999
+                            for _, p in ipairs(GetGamePool('CPed')) do
+                                if p ~= PlayerPedId() and IsPedAPlayer(p) then
+                                    local d2 = #(GetEntityCoords(PlayerPedId()) - GetEntityCoords(p))
+                                    if d2 < cD then closest = p; cD = d2 end
                                 end
                             end
-                            local driverP = GetPedInVehicleSeat(pCar, -1)
-                            if closest ~= 0 and driverP ~= 0 then
-                                TaskVehicleChase(driverP, closest)
-                            end
+                            local dp = GetPedInVehicleSeat(pc, -1)
+                            if closest ~= 0 and dp ~= 0 then TaskVehicleChase(dp, closest) end
                             Citizen.Wait(5000)
                         end
                     end)
                 end
-                ::skipProtect::
+                ::skipP::
                 Citizen.Wait(1500)
             end
-            notify('🛡️ ' .. numProtect .. ' carros de PROTEÇÃO activados!', 'success', 5000)
+            notify('🛡️ ' .. numProtect .. ' carros de PROTEÇÃO!', 'success', 5000)
         end)
     end
 end
-
 
 -- ── Blips de localização ──────────────────────────────────────
 
