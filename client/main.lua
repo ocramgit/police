@@ -1457,7 +1457,7 @@ RegisterCommand('flip', function()
     notify('🔄 Carro endireitado!', 'success', 3000)
 end, false)
 
--- ══ Tecla H: Helicóptero de Apoio (cops) ═ 60s duração + 60s cooldown ══
+-- ══ Tecla H: Helicóptero de Apoio (cops) ═ 60s duração + 20s cooldown ══
 
 local heliCooldown = 0
 
@@ -1470,7 +1470,7 @@ RegisterCommand('policiaheli', function()
         notify('⏳ Heli em cooldown! Espera ' .. remaining .. 's', 'error', 3000)
         return
     end
-    heliCooldown = now + 120000  -- 60s duração + 60s cooldown = 2min total
+    heliCooldown = now + 80000  -- 60s duração + 20s cooldown = 80s total
     -- Disparar evento com 60s de duração
     local robberPos = nil
     for _, pos in ipairs(lastPositions) do
@@ -1782,9 +1782,8 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
     Citizen.CreateThread(function()
         local myC = GetEntityCoords(PlayerPedId())
 
-        -- Heli de apoio de polícia — mais agressivo, dispara mísseis
-        local heliModels = {'hunter', 'valkyrie', 'buzzard2'}
-        local hHash = GetHashKey(randomFrom(heliModels))
+        -- Usar buzzard (armas integradas no heli)
+        local hHash = GetHashKey('buzzard')
         RequestModel(hHash)
         local t = 0
         while not HasModelLoaded(hHash) and t < 30 do Citizen.Wait(100); t = t + 1 end
@@ -1794,11 +1793,12 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         local spawnY = targetCoords and targetCoords.y or myC.y
         local spawnZ = (targetCoords and targetCoords.z or myC.z) + (heliAlt or 80)
 
-        local heli = CreateVehicle(hHash, spawnX, spawnY, spawnZ, 0.0, true, false)
+        local heli = CreateVehicle(hHash, spawnX + 200.0, spawnY + 200.0, spawnZ, 0.0, true, false)
         SetVehicleEngineOn(heli, true, false, true)
         SetHeliBladesFullSpeed(heli)
         SetModelAsNoLongerNeeded(hHash)
 
+        -- Piloto
         local pilotHash = GetHashKey('s_m_y_pilot_01')
         RequestModel(pilotHash)
         t = 0
@@ -1807,56 +1807,55 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         local pilot = nil
         if HasModelLoaded(pilotHash) then
             pilot = CreatePedInsideVehicle(heli, 26, pilotHash, -1, true, false)
-            -- Armar com mísseis de perseguição
-            local rocketHash = GetHashKey('weapon_hominglauncher')
-            GiveWeaponToPed(pilot, rocketHash, 30, false, true)
             SetModelAsNoLongerNeeded(pilotHash)
         end
+        if not pilot then
+            DeleteEntity(heli)
+            return
+        end
 
-        -- Perseguir e disparar ao ladrão com combate real
-        if pilot then
-            -- Encontrar ped do ladrão
-            local robberPed = nil
-            for _, playerId in ipairs(GetActivePlayers()) do
-                local ped = GetPlayerPed(playerId)
-                if ped ~= PlayerPedId() then
-                    robberPed = ped
-                    break
-                end
-            end
-
-            if robberPed then
-                -- Configurar IA de combate do piloto
-                SetPedCombatAttributes(pilot, 1,  true)  -- pode usar veículos em combate
-                SetPedCombatAttributes(pilot, 5,  true)  -- pode lutar contra peds armados
-                SetPedCombatAttributes(pilot, 17, true)  -- pode atacar alvo no veículo
-                SetPedCombatAttributes(pilot, 46, true)  -- reage sempre ao alvo
-                SetPedCombatRange(pilot, 2)               -- alcance longo
-                SetPedAlertness(pilot, 3)                 -- máximo alerta
-
-                -- Perseguição ativa a baixa altitude para tiros mais precisos
-                TaskHeliChase(pilot, robberPed, 0.0, 0.0, 15.0)
-
-                -- Combate contínuo: a cada 6s reafirma o alvo para o piloto não desistir
-                Citizen.CreateThread(function()
-                    local elapsed = 0
-                    Citizen.Wait(3000)
-                    while roundActive and elapsed < duration and DoesEntityExist(heli) and DoesEntityExist(pilot) do
-                        if DoesEntityExist(robberPed) then
-                            -- Virar piloto para o alvo + disparar
-                            TaskCombatPed(pilot, robberPed, 0, 16)
-                            Citizen.Wait(2000)
-                            -- Retomar perseguição depois de disparar
-                            if DoesEntityExist(heli) and DoesEntityExist(pilot) then
-                                TaskHeliChase(pilot, robberPed, 0.0, 0.0, 15.0)
-                            end
-                        end
-                        Citizen.Wait(6000)
-                        elapsed = elapsed + 8
-                    end
-                end)
+        -- Encontrar ladr??o
+        local robberPed = nil
+        for _, playerId in ipairs(GetActivePlayers()) do
+            local ped = GetPlayerPed(playerId)
+            if ped ~= PlayerPedId() and DoesEntityExist(ped) then
+                robberPed = ped
+                break
             end
         end
+
+        if not robberPed then
+            DeleteEntity(pilot)
+            DeleteEntity(heli)
+            return
+        end
+
+        -- TaskHeliMission: modo 23 = HELI_MISSION_ATTACK
+        -- O heli persegue o alvo no ar e usa as armas integradas
+        TaskHeliMission(pilot, heli, 0, robberPed,
+            0.0, 0.0, 0.0,   -- target coords (ignorado quando target ped)
+            23,               -- mission type: ATTACK
+            40.0,             -- cruise speed
+            20.0,             -- target reach dist
+            -1.0,             -- heli orientation (heading: auto)
+            40,               -- flight altitude
+            20,               -- min height above terrain
+            -1.0,             -- slow down dist
+            0                 -- heli flags
+        )
+
+        -- Thread que re-envia a miss??o a cada 10s para n??o perder o alvo
+        Citizen.CreateThread(function()
+            local el = 0
+            while roundActive and el < duration and DoesEntityExist(heli) and DoesEntityExist(pilot) do
+                Citizen.Wait(10000)
+                el = el + 10
+                if DoesEntityExist(robberPed) and DoesEntityExist(heli) and DoesEntityExist(pilot) then
+                    TaskHeliMission(pilot, heli, 0, robberPed,
+                        0.0, 0.0, 0.0, 23, 40.0, 20.0, -1.0, 40, 20, -1.0, 0)
+                end
+            end
+        end)
 
         -- Holofote
         Citizen.CreateThread(function()
@@ -1866,12 +1865,12 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
             end
         end)
 
-        -- Duração total do apoio
+        -- Esperar dura????o total
         Citizen.Wait(duration * 1000)
 
-        -- Desaparecer
+        -- Limpar
         SetVehicleSearchlight(heli, false, false)
-        if pilot and DoesEntityExist(pilot) then
+        if DoesEntityExist(pilot) then
             ClearPedTasksImmediately(pilot)
             SetEntityAsMissionEntity(pilot, true, true)
             DeleteEntity(pilot)
