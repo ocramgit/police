@@ -715,3 +715,106 @@ kbd {
     font-weight: 800;
     color: #fff;
 }
+
+/* ═══════════════════════════════════════
+   NOVIDADES (HELI, BORDA, SPIKES)
+   ═══════════════════════════════════════ */
+
+/* ── Heli Cooldown ──────────────────────── */
+#heli-cooldown {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.2);
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+#heli-cooldown.hidden {
+    display: none;
+}
+
+#heli-label {
+    font-size: 10px;
+    font-weight: 800;
+    color: #93c5fd;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+#heli-bar-track {
+    width: 60px;
+    height: 6px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+#heli-bar {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    border-radius: 999px;
+    transition: width 1s linear;
+}
+
+#heli-timer {
+    font-size: 11px;
+    font-weight: 800;
+    color: #bfdbfe;
+    width: 24px;
+    text-align: right;
+}
+
+/* ── Border Warning ─────────────────────── */
+#border-warn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 5px 14px;
+    background: rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.6);
+    border-radius: 999px;
+    color: #fca5a5;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    animation: pulse-glow 1s infinite alternate;
+}
+
+#border-warn.hidden {
+    display: none;
+}
+
+/* ── Spike Count ────────────────────────── */
+#spike-count {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 5px 12px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    border-radius: 999px;
+    color: #6ee7b7;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+}
+
+#spike-count.hidden {
+    display: none;
+}
+
+#spike-count.empty {
+    background: rgba(107, 114, 128, 0.2);
+    border-color: rgba(107, 114, 128, 0.4);
+    color: #9ca3af;
+}

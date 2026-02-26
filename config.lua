@@ -133,10 +133,21 @@ Config.alertRange  = 80.0
 
 -- ── HELICÓPTERO DE APOIO (polícia) ───────────────────────────
 Config.heliSupport = {
-    cooldown = 120,   -- segundos antes de poder usar de novo
-    duration = 20,    -- segundos com holofote
-    heliAlt  = 80,    -- altitude de spawn
+    cooldown     = 90,    -- segundos antes de poder usar de novo
+    duration     = 60,    -- segundos activos
+    heliAlt      = 80,    -- altitude de spawn
+    attackRange  = 120,   -- metros — distância para disparar
 }
+
+-- ── BORDAS DA ZONA ────────────────────────────────────────────
+Config.zoneBounce = {
+    bounceForce = 14.0,  -- intensidade do rebote no veículo
+    damagePct   = 0.07,  -- % de HP que o ladrão perde a cada impacto (a cada 700ms)
+    warnDist    = 80.0,  -- metros antes da borda para aviso HUD
+}
+
+-- ── SPIKE STRIPS ──────────────────────────────────────────────
+Config.spikeStripsPerCop = 2  -- max spike strips por cop por ronda
 
 -- ── ROADBLOCKS NPC ────────────────────────────────────────────
 Config.roadblockCount = 25  -- quantas barricadas por ronda (cobre quase todas as estradas)

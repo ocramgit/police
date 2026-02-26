@@ -1,363 +1,314 @@
-/* ──────────────────────────────────────────────
-   Policia Minigame – NUI Controller
-   ────────────────────────────────────────────── */
+'use strict';
 
-// ── Referências DOM ─────────────────────────────────────────
+// ── Estado ─────────────────────────────────────────────────────
+let roundActive = false;
+let myRole = null;
+let roundDuration = 900;
+let lockSeconds = 30;
+let timerEl, ringEl, timerSub, roleBadge, roleIcon, roleLabel;
+let phaseLabelEl, robberCountEl, robberNumEl;
+let waveBadge, waveIcon, waveLabel;
+let dangerBar, dangerIcon, dangerText;
+let actionHint, heliCooldownEl, heliBarEl, heliTimerEl;
+let borderWarnEl, spikeCountEl, keybindsPanel, keybindsList;
+let killFeed;
+let timerInterval = null;
+let lockTimer = null;
+let remainingTime = 0;
 
-const adminUI = document.getElementById('admin-ui');
-const inputCops = document.getElementById('input-cops');
-const inputLock = document.getElementById('input-lock');
-const lockHint = document.getElementById('lock-hint');
-const wavesOnBtn = document.getElementById('waves-on');
-const wavesOffBtn = document.getElementById('waves-off');
-const btnStart = document.getElementById('btn-start');
-const btnCancel = document.getElementById('btn-cancel');
-
-const hud = document.getElementById('hud');
-const roleIcon = document.getElementById('role-icon');
-const roleLabel = document.getElementById('role-label');
-const phaseLabel = document.getElementById('phase-label');
-const timerText = document.getElementById('timer-text');
-const timerSub = document.getElementById('timer-sub');
-const ringFill = document.getElementById('ring-fill');
-const robberCount = document.getElementById('robber-count');
-const robberNum = document.getElementById('robber-num');
-const dangerBar = document.getElementById('danger-bar');
-const dangerText = document.getElementById('danger-text');
-const actionHint = document.getElementById('action-hint');
-const waveBadge = document.getElementById('wave-badge');
-const waveLabel = document.getElementById('wave-label');
-const waveIcon = document.getElementById('wave-icon');
-const killFeed = document.getElementById('kill-feed');
-const keybindsPanel = document.getElementById('keybinds-panel');
-const keybindsList = document.getElementById('keybinds-list');
-
-const CIRCUMFERENCE = 213.63;
-
-let totalSeconds = 0;
-let currentSeconds = 0;
-let intervalId = null;
-let currentRole = null;
-let savedRoundDuration = 900;
-let waveModeSelected = true;
-
-// ── Admin UI Logic ───────────────────────────────────────────
-
-// Botões +/− dos campos numéricos
-document.querySelectorAll('.adj-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const target = document.getElementById(btn.dataset.target);
-        if (!target) return;
-        const delta = parseInt(btn.dataset.delta, 10);
-        const min = parseInt(target.min, 10) || 1;
-        const max = parseInt(target.max, 10) || 999;
-        let val = parseInt(target.value, 10) + delta;
-        val = Math.min(Math.max(val, min), max);
-        target.value = val;
-        if (target === inputLock) updateLockHint(val);
-    });
+// ── Init ───────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+    timerEl = document.getElementById('timer-text');
+    ringEl = document.getElementById('ring-fill');
+    timerSub = document.getElementById('timer-sub');
+    roleBadge = document.getElementById('role-badge');
+    roleIcon = document.getElementById('role-icon');
+    roleLabel = document.getElementById('role-label');
+    phaseLabelEl = document.getElementById('phase-label');
+    robberCountEl = document.getElementById('robber-count');
+    robberNumEl = document.getElementById('robber-num');
+    waveBadge = document.getElementById('wave-badge');
+    waveIcon = document.getElementById('wave-icon');
+    waveLabel = document.getElementById('wave-label');
+    dangerBar = document.getElementById('danger-bar');
+    dangerIcon = document.getElementById('danger-icon');
+    dangerText = document.getElementById('danger-text');
+    actionHint = document.getElementById('action-hint');
+    heliCooldownEl = document.getElementById('heli-cooldown');
+    heliBarEl = document.getElementById('heli-bar');
+    heliTimerEl = document.getElementById('heli-timer');
+    borderWarnEl = document.getElementById('border-warn');
+    spikeCountEl = document.getElementById('spike-count');
+    keybindsPanel = document.getElementById('keybinds-panel');
+    keybindsList = document.getElementById('keybinds-list');
+    killFeed = document.getElementById('kill-feed');
 });
 
-function updateLockHint(secs) {
-    secs = parseInt(secs, 10) || 30;
-    lockHint.textContent = secs < 60
-        ? secs + ' segundos'
-        : Math.floor(secs / 60) + 'm ' + (secs % 60 ? (secs % 60) + 's' : '');
-}
+// ── NUI Message Handler ────────────────────────────────────────
+window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || !d.action) return;
 
-inputLock.addEventListener('input', () => updateLockHint(inputLock.value));
+    switch (d.action) {
 
-// Toggle Ondas
-wavesOnBtn.addEventListener('click', () => {
-    waveModeSelected = true;
-    wavesOnBtn.classList.add('active');
-    wavesOffBtn.classList.remove('active');
-});
-wavesOffBtn.addEventListener('click', () => {
-    waveModeSelected = false;
-    wavesOffBtn.classList.add('active');
-    wavesOnBtn.classList.remove('active');
-});
-
-// Iniciar Ronda
-btnStart.addEventListener('click', () => {
-    const numCops = parseInt(inputCops.value, 10) || 1;
-    const lockSecs = parseInt(inputLock.value, 10) || 30;
-    fetch(`https://${GetParentResourceName()}/policia:submitConfig`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ numCops, lockSecs, waveMode: waveModeSelected })
-    });
-    adminUI.classList.add('hidden');
-});
-
-// Cancelar
-btnCancel.addEventListener('click', () => {
-    fetch(`https://${GetParentResourceName()}/policia:closeAdminUI`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-    });
-    adminUI.classList.add('hidden');
-});
-
-// ── Utilitários ──────────────────────────────
-function pad(n) { return String(Math.floor(n)).padStart(2, '0'); }
-
-function formatTime(secs) {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return m > 0 ? `${m}:${pad(s)}` : `${s}s`;
-}
-
-function setRingProgress(remaining, total) {
-    if (total <= 0) { ringFill.style.strokeDashoffset = 0; return; }
-    const offset = CIRCUMFERENCE * (1 - remaining / total);
-    ringFill.style.strokeDashoffset = offset;
-}
-
-function stopTimer() {
-    if (intervalId) { clearInterval(intervalId); intervalId = null; }
-}
-
-// ── Temporizador ──────────────────────────────
-
-function startTimer(seconds, sub, onEnd) {
-    stopTimer();
-    currentSeconds = seconds;
-    totalSeconds = seconds;
-    timerSub.textContent = sub;
-    timerText.textContent = formatTime(currentSeconds);
-    setRingProgress(currentSeconds, totalSeconds);
-    hud.classList.remove('pulsing');
-
-    intervalId = setInterval(() => {
-        currentSeconds--;
-        timerText.textContent = formatTime(Math.max(currentSeconds, 0));
-        setRingProgress(Math.max(currentSeconds, 0), totalSeconds);
-        if (currentSeconds <= 10) hud.classList.add('pulsing');
-        if (currentSeconds <= 0) {
-            stopTimer();
-            if (onEnd) onEnd();
-        }
-    }, 1000);
-}
-
-function startLockPhase(lockSecs, roundDuration) {
-    startTimer(lockSecs, 'TEMPO ATÉ SER LIBERTADO', () => {
-        phaseLabel.textContent = '⚠️ LIBERTO! VAI À CAÇA!';
-        timerText.textContent = '!';
-        setTimeout(() => startHuntPhase(roundDuration), 1500);
-    });
-    phaseLabel.textContent = 'PRESO — AGUARDA LIBERTAÇÃO';
-}
-
-function startHuntPhase(duration) {
-    startTimer(duration, 'TEMPO RESTANTE DA RONDA', () => { });
-    phaseLabel.textContent = 'RONDA EM CURSO!';
-}
-
-// ── Perigo ────────────────────────────────────
-
-function setDanger(level) {
-    dangerBar.classList.remove('hidden', 'level-1', 'level-2');
-    if (level === 0) {
-        dangerBar.classList.add('hidden');
-    } else if (level === 1) {
-        dangerBar.classList.add('level-1');
-        dangerText.textContent = 'INIMIGO PRÓXIMO';
-        dangerBar.classList.remove('hidden');
-    } else {
-        dangerBar.classList.add('level-2');
-        dangerText.textContent = 'PERIGO IMEDIATO!';
-        dangerBar.classList.remove('hidden');
-    }
-}
-
-// ── Wave Badge ────────────────────────────────
-
-const waveColorMap = {
-    blue: 'wave-blue',
-    yellow: 'wave-yellow',
-    orange: 'wave-orange',
-    red: 'wave-red',
-};
-
-function setWave(waveNum, label, color) {
-    waveBadge.classList.remove('hidden', 'wave-yellow', 'wave-orange', 'wave-red');
-    waveIcon.textContent = '⚡';
-    waveLabel.textContent = `ONDA ${waveNum}  ·  ${label}`;
-    const cls = waveColorMap[color] || '';
-    if (cls) waveBadge.classList.add(cls);
-}
-
-// ── Kill Feed ─────────────────────────────────
-
-const kfIcons = {
-    arrest: '🔒',
-    kill: '💀',
-    oob: '🚫',
-};
-
-const kfMessages = {
-    arrest: (a, v) => `${a} algemou ${v}`,
-    kill: (a, v) => `${v} foi eliminado`,
-    oob: (a, v) => `${v} saiu da zona`,
-};
-
-let kfActiveItems = 0;
-const MAX_KF = 4;
-
-function addKillFeedItem(feedType, actor, victim) {
-    // Remover o mais antigo se já tiver 4
-    if (kfActiveItems >= MAX_KF) {
-        const oldest = killFeed.lastElementChild;
-        if (oldest) oldest.remove();
-        kfActiveItems--;
-    }
-
-    const icon = kfIcons[feedType] || '⚡';
-    const msg = kfMessages[feedType] ? kfMessages[feedType](actor, victim) : `${actor} → ${victim}`;
-
-    const el = document.createElement('div');
-    el.className = `kf-item kf-${feedType}`;
-    el.innerHTML = `<span>${icon}</span><span>${msg}</span>`;
-    killFeed.prepend(el);
-    kfActiveItems++;
-
-    setTimeout(() => {
-        el.classList.add('kf-fade');
-        setTimeout(() => {
-            el.remove();
-            kfActiveItems = Math.max(0, kfActiveItems - 1);
-        }, 500);
-    }, 5000);
-}
-
-// ── Mensagens do Lua ──────────────────────────
-
-window.addEventListener('message', function (event) {
-    const data = event.data;
-    if (!data || !data.action) return;
-
-    switch (data.action) {
-
-        case 'openAdminUI': {
-            // Reset dos campos para defaults
-            inputCops.value = 2;
-            inputLock.value = 30;
-            updateLockHint(30);
-            waveModeSelected = true;
-            wavesOnBtn.classList.add('active');
-            wavesOffBtn.classList.remove('active');
-            adminUI.classList.remove('hidden');
-            break;
-        }
-
+        // ── Abrir HUD
         case 'open': {
-            currentRole = data.role;
-            savedRoundDuration = data.roundDuration || 900;
-            document.body.classList.remove('cop', 'robber');
-            document.body.classList.add(data.role);
+            roundActive = true;
+            myRole = d.role;
+            roundDuration = d.roundDuration || 900;
+            lockSeconds = d.lockSeconds || 30;
+            remainingTime = roundDuration;
 
-            if (data.role === 'cop') {
+            document.body.className = myRole;
+            document.getElementById('hud').classList.remove('hidden');
+
+            if (myRole === 'cop') {
                 roleIcon.textContent = '🚓';
                 roleLabel.textContent = 'POLÍCIA';
                 actionHint.classList.remove('hidden');
-                if (data.lockSeconds > 0) {
-                    startLockPhase(data.lockSeconds, savedRoundDuration);
-                } else {
-                    startHuntPhase(savedRoundDuration);
-                }
+                robberCountEl.classList.remove('hidden');
+                buildKeybinds([
+                    { key: 'G', label: 'Algemar' },
+                    { key: 'H', label: 'Heli Apoio' },
+                    { key: 'K', label: 'Spike Strip' },
+                    { key: 'J', label: 'Drone' },
+                ]);
             } else {
                 roleIcon.textContent = '🔪';
                 roleLabel.textContent = 'LADRÃO';
                 actionHint.classList.add('hidden');
-                if (data.lockSeconds > 0) {
-                    startLockPhase(data.lockSeconds, savedRoundDuration);
-                } else {
-                    startHuntPhase(savedRoundDuration);
-                }
+                buildKeybinds([{ key: '/flip', label: 'Endireitar carro' }]);
             }
 
-            robberCount.classList.remove('hidden');
-            hud.classList.remove('hidden');
-
-            // Mostrar keybinds panel por role
-            showKeybinds(data.role);
-            break;
-        }
-
-        case 'released': {
-            stopTimer();
-            phaseLabel.textContent = '🚨 LIBERTO! À CAÇA!';
-            timerText.textContent = '!';
-            hud.classList.add('pulsing');
-            setTimeout(() => startHuntPhase(savedRoundDuration), 1500);
-            break;
-        }
-
-        case 'updateRobbers': {
-            robberNum.textContent = data.count;
-            break;
-        }
-
-        case 'danger': {
-            setDanger(data.level || 0);
-            break;
-        }
-
-        case 'waveUpdate': {
-            setWave(data.wave, data.label, data.color || 'blue');
-            break;
-        }
-
-        case 'killFeed': {
-            addKillFeedItem(data.feedType, data.actor || '', data.victim || '');
-            break;
-        }
-
-        case 'close': {
-            stopTimer();
-            setDanger(0);
-            hud.classList.add('hidden');
             waveBadge.classList.add('hidden');
-            document.body.classList.remove('cop', 'robber');
-            robberCount.classList.add('hidden');
-            actionHint.classList.add('hidden');
-            currentRole = null;
-            // Limpar kill feed
-            killFeed.innerHTML = '';
-            kfActiveItems = 0;
-            // Esconder keybinds
+            phaseLabelEl.textContent = myRole === 'cop' ? 'A AGUARDAR LIBERTAÇÃO...' : 'EM FUGA!';
+
+            // Countdown da round
+            startRoundTimer();
+
+            // Lock countdown visual
+            if (myRole === 'cop') {
+                let lock = lockSeconds;
+                phaseLabelEl.textContent = `CONGELADO — ${lock}s`;
+                lockTimer = setInterval(() => {
+                    lock--;
+                    if (lock <= 0) {
+                        clearInterval(lockTimer);
+                        lockTimer = null;
+                    } else {
+                        phaseLabelEl.textContent = `CONGELADO — ${lock}s`;
+                    }
+                }, 1000);
+            }
+            break;
+        }
+
+        // ── Fechar HUD
+        case 'close': {
+            roundActive = false;
+            myRole = null;
+            document.body.className = '';
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('admin-ui').classList.add('hidden');
             keybindsPanel.classList.add('hidden');
+            waveBadge.classList.add('hidden');
+            dangerBar.classList.add('hidden');
+            if (heliCooldownEl) heliCooldownEl.classList.add('hidden');
+            if (borderWarnEl) borderWarnEl.classList.add('hidden');
+            clearInterval(timerInterval);
+            clearInterval(lockTimer);
+            break;
+        }
+
+        // ── Cop libertado
+        case 'released': {
+            if (lockTimer) { clearInterval(lockTimer); lockTimer = null; }
+            phaseLabelEl.textContent = 'EM CAÇA!';
+            break;
+        }
+
+        // ── Abrir Admin UI
+        case 'openAdminUI': {
+            document.getElementById('admin-ui').classList.remove('hidden');
+            break;
+        }
+
+        // ── Wave update
+        case 'waveUpdate': {
+            waveBadge.classList.remove('hidden');
+            waveBadge.className = 'wave-' + (d.color || 'blue');
+            waveIcon.textContent = '⚡';
+            waveLabel.textContent = 'ONDA ' + d.wave + ': ' + d.label;
+            break;
+        }
+
+        // ── Robbers count
+        case 'updateRobbers': {
+            robberNumEl.textContent = d.count;
+            break;
+        }
+
+        // ── Danger indicator
+        case 'danger': {
+            dangerBar.className = '';
+            if (d.level === 0) {
+                dangerBar.classList.add('hidden');
+            } else if (d.level === 1) {
+                dangerBar.classList.add('level-1');
+                dangerIcon.textContent = '⚠️';
+                dangerText.textContent = 'INIMIGO PRÓXIMO';
+                document.getElementById('hud').classList.remove('pulsing');
+            } else {
+                dangerBar.classList.add('level-2');
+                dangerIcon.textContent = '🚨';
+                dangerText.textContent = 'PERIGO IMINENTE!';
+                document.getElementById('hud').classList.add('pulsing');
+            }
+            break;
+        }
+
+        // ── Kill Feed
+        case 'killFeed': {
+            addKillFeed(d.feedType, d.actor, d.victim);
+            break;
+        }
+
+        // ── Heli cooldown bar (cop)
+        case 'heliCooldown': {
+            if (!heliCooldownEl) break;
+            if (d.remaining <= 0) {
+                heliCooldownEl.classList.add('hidden');
+            } else {
+                heliCooldownEl.classList.remove('hidden');
+                const pct = (d.remaining / d.total) * 100;
+                if (heliBarEl) heliBarEl.style.width = pct + '%';
+                if (heliTimerEl) heliTimerEl.textContent = d.remaining + 's';
+            }
+            break;
+        }
+
+        // ── Border warning
+        case 'borderWarn': {
+            if (!borderWarnEl) break;
+            if (d.near) {
+                borderWarnEl.classList.remove('hidden');
+            } else {
+                borderWarnEl.classList.add('hidden');
+            }
+            break;
+        }
+
+        // ── Spike count (cop)
+        case 'spikeCount': {
+            if (!spikeCountEl) break;
+            spikeCountEl.textContent = '🚨 Spikes: ' + d.count;
+            spikeCountEl.classList.toggle('empty', d.count <= 0);
             break;
         }
     }
 });
 
-// ══ Keybinds Panel ═══════════════════════════════════
+// ── Timer ──────────────────────────────────────────────────────
+function startRoundTimer() {
+    clearInterval(timerInterval);
+    remainingTime = roundDuration;
+    const CIRCUMFERENCE = 213.63;
 
-const allKeybinds = {
-    cop: [
-        { key: 'G', label: 'Algemar' },
-        { key: 'H', label: 'Heli Apoio' },
-        { key: 'J', label: 'Drone' },
-        { key: '/flip', label: 'Endireitar carro' },
-    ],
-    robber: [
-        { key: '/flip', label: 'Endireitar carro' },
-    ]
-};
+    timerInterval = setInterval(() => {
+        if (!roundActive) { clearInterval(timerInterval); return; }
+        remainingTime = Math.max(0, remainingTime - 1);
 
-function showKeybinds(role) {
-    const binds = allKeybinds[role] || [];
-    if (binds.length === 0) {
-        keybindsPanel.classList.add('hidden');
-        return;
-    }
-    keybindsList.innerHTML = binds.map(b =>
-        `<div class="kb-row"><kbd>${b.key}</kbd><span>${b.label}</span></div>`
-    ).join('');
+        const mins = Math.floor(remainingTime / 60);
+        const secs = remainingTime % 60;
+        timerEl.textContent = mins + ':' + String(secs).padStart(2, '0');
+
+        const pct = remainingTime / roundDuration;
+        ringEl.style.strokeDashoffset = CIRCUMFERENCE * (1 - pct);
+
+        // Cor do anel: verde→amarelo→vermelho nos últimos 60s
+        if (remainingTime < 60) ringEl.style.stroke = '#ef4444';
+        else if (remainingTime < 180) ringEl.style.stroke = '#f59e0b';
+    }, 1000);
+}
+
+// ── Keybinds panel ─────────────────────────────────────────────
+function buildKeybinds(binds) {
+    keybindsList.innerHTML = '';
+    binds.forEach(b => {
+        const row = document.createElement('div');
+        row.className = 'kb-row';
+        row.innerHTML = `<kbd>${b.key}</kbd><span>${b.label}</span>`;
+        keybindsList.appendChild(row);
+    });
     keybindsPanel.classList.remove('hidden');
 }
+
+// ── Kill Feed ──────────────────────────────────────────────────
+function addKillFeed(type, actor, victim) {
+    const item = document.createElement('div');
+    item.className = 'kf-item';
+    if (type === 'arrest') { item.classList.add('kf-arrest'); item.textContent = `🔒 ${actor} algemou ${victim}`; }
+    else if (type === 'kill') { item.classList.add('kf-kill'); item.textContent = `💀 ${victim} foi eliminado`; }
+    else if (type === 'oob') { item.classList.add('kf-oob'); item.textContent = `🚫 ${victim} saiu da zona`; }
+    killFeed.appendChild(item);
+    setTimeout(() => {
+        item.classList.add('kf-fade');
+        setTimeout(() => item.remove(), 500);
+    }, 5000);
+}
+
+// ── Admin UI ───────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    // +/− buttons
+    document.querySelectorAll('.adj-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = document.getElementById(btn.dataset.target);
+            if (!target) return;
+            const delta = parseInt(btn.dataset.delta);
+            const min = parseInt(target.min) || 0;
+            const max = parseInt(target.max) || 9999;
+            const val = Math.min(max, Math.max(min, parseInt(target.value || 0) + delta));
+            target.value = val;
+            if (target.id === 'input-lock') {
+                document.getElementById('lock-hint').textContent = val + ' segundos';
+            }
+        });
+    });
+
+    // Waves toggle
+    const wOn = document.getElementById('waves-on');
+    const wOff = document.getElementById('waves-off');
+    if (wOn && wOff) {
+        wOn.addEventListener('click', () => { wOn.classList.add('active'); wOff.classList.remove('active'); });
+        wOff.addEventListener('click', () => { wOff.classList.add('active'); wOn.classList.remove('active'); });
+    }
+
+    // Start button
+    const btnStart = document.getElementById('btn-start');
+    if (btnStart) {
+        btnStart.addEventListener('click', () => {
+            const numCops = parseInt(document.getElementById('input-cops').value) || 2;
+            const lockSecs = parseInt(document.getElementById('input-lock').value) || 30;
+            const waves = document.getElementById('waves-on').classList.contains('active');
+            fetch('https://Policia/policia:submitConfig', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ numCops, lockSecs, waveMode: waves })
+            });
+            document.getElementById('admin-ui').classList.add('hidden');
+        });
+    }
+
+    // Cancel button
+    const btnCancel = document.getElementById('btn-cancel');
+    if (btnCancel) {
+        btnCancel.addEventListener('click', () => {
+            fetch('https://Policia/policia:closeAdminUI', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            document.getElementById('admin-ui').classList.add('hidden');
+        });
+    }
+});
