@@ -290,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const numCops = parseInt(document.getElementById('input-cops').value) || 2;
             const lockSecs = parseInt(document.getElementById('input-lock').value) || 30;
             const waves = document.getElementById('waves-on').classList.contains('active');
-            fetch('https://Policia/policia:submitConfig', {
+            fetch('https://police/policia:submitConfig', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ numCops, lockSecs, waveMode: waves })
@@ -303,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCancel = document.getElementById('btn-cancel');
     if (btnCancel) {
         btnCancel.addEventListener('click', () => {
-            fetch('https://Policia/policia:closeAdminUI', {
+            fetch('https://police/policia:closeAdminUI', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({})
