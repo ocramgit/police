@@ -565,26 +565,52 @@ local function placeTurret()
             notify('💥 Turret de Bazuca automática instalada!', 'success', 3000)
 
             Citizen.CreateThread(function()
-                local weaponHash = GetHashKey('weapon_rpg') -- Míssil puro e duro (evita bug de não disparar por falta de lock nativo)
+                -- Criar um Ped "Oculto" dentro da Turret para servir de Atirador Nível Máximo (Aimbot)
+                local gunnerHash = GetHashKey('s_m_y_swat_01')
+                RequestModel(gunnerHash)
+                local t2 = 0
+                while not HasModelLoaded(gunnerHash) and t2 < 100 do Citizen.Wait(100); t2 = t2 + 1 end
+                if not HasModelLoaded(gunnerHash) then return end
+
+                local gunner = CreatePed(26, gunnerHash, spX, spY, pos.z, GetEntityHeading(ped), true, false)
+                SetEntityAsMissionEntity(gunner, true, true)
+                SetEntityVisible(gunner, false, false) -- 100% Oculto
+                SetEntityCollision(gunner, false, false) -- Sem bater em carros
+                SetEntityInvincible(gunner, true)
+                FreezeEntityPosition(gunner, true)
+
+                -- Dar Lança Rockets ao Fantasma e Precisão 100%
+                SetPedCombatAttributes(gunner, 46, true)
+                SetPedCombatAttributes(gunner, 5, true)
+                SetPedAccuracy(gunner, 100)
+                SetPedShootRate(gunner, 1000)
+                local rpgHash = GetHashKey('weapon_rpg')
+                GiveWeaponToPed(gunner, rpgHash, 9999, false, true)
+                SetCurrentPedWeapon(gunner, rpgHash, true)
+                
+                chaosEntities[#chaosEntities + 1] = gunner
+
+                local turretPos = GetEntityCoords(turretProp)
                 local lastShot = 0
-                while roundActive and DoesEntityExist(turretProp) do
+                
+                -- Loop de radar do Operador Fantasma
+                while roundActive and DoesEntityExist(turretProp) and DoesEntityExist(gunner) do
                     Citizen.Wait(500)
                     local currentNow = GetGameTimer()
-                    if currentNow - lastShot > 1500 then
-                        local turretPos = GetEntityCoords(turretProp)
-                        turretPos = vector3(turretPos.x, turretPos.y, turretPos.z + 1.5) -- Levantar acima da colisão da arma
-
+                    if currentNow - lastShot > 2500 then -- Cooldown de 2.5s por missel para não lagar o ping
                         local bestPed = nil
-                        local bestDist = 400.0 -- Deteção muito mais longa!
+                        local bestDist = 400.0
+                        
+                        -- Encontrar alvo
                         for _, pid in ipairs(GetActivePlayers()) do
                             local enemyPed = GetPlayerPed(pid)
                             if enemyPed ~= PlayerPedId() and DoesEntityExist(enemyPed) and not IsPedDeadOrDying(enemyPed, true) then
                                 local svrId = GetPlayerServerId(pid)
-                                -- Converter para number devido a falhas de conversão JSON no FiveM
                                 if activeRobbers[tonumber(svrId)] or activeRobbers[tostring(svrId)] then
                                     local enemyCoords = GetEntityCoords(enemyPed)
                                     local d = #(turretPos - enemyCoords)
-                                    if d < bestDist then
+                                    -- Usa validação extra de linha de visão nativa do GTA
+                                    if d < bestDist and HasEntityClearLosToEntity(gunner, enemyPed, 17) then
                                         bestDist = d
                                         bestPed = enemyPed
                                     end
@@ -593,17 +619,18 @@ local function placeTurret()
                         end
 
                         if bestPed then
-                            local targetCoords = GetEntityCoords(bestPed)
-                            -- Dispara Míssil (RPG) com velocidade viável para impacto real (fisica) e offset de chao
-                            ShootSingleBulletBetweenCoords(
-                                turretPos.x, turretPos.y, turretPos.z,
-                                targetCoords.x, targetCoords.y, targetCoords.z + 0.2,
-                                300, true, weaponHash, PlayerPedId(), true, false, 250.0
-                            )
+                            -- Limpar Tasks antigas e obrigar disparo agressivo!
+                            ClearPedTasks(gunner)
+                            TaskShootAtEntity(gunner, bestPed, 2000, GetHashKey('FIRING_PATTERN_FULL_AUTO'))
                             lastShot = currentNow
+                        else
+                            ClearPedTasks(gunner)
                         end
                     end
                 end
+                
+                -- Se a turret quebrar ou o jogo acabar, apaga o boneco fantasma
+                if DoesEntityExist(gunner) then DeleteEntity(gunner) end
             end)
 
             Citizen.CreateThread(function()
@@ -621,6 +648,108 @@ end
 RegisterKeyMapping('policiaturret', 'Colocar Turret de Bazuca (Polícia)', 'keyboard', 'u')
 RegisterCommand('policiaturret', function()
     placeTurret()
+end, false)
+
+-- ── HELICÓPTERO DE ATAQUE LIGEIRO (cop only) — tecla H ──────────────────────────────
+
+local heliAtaqueCooldown = 0
+
+RegisterKeyMapping('policiaheliataque', 'Chamar Heli de Ataque Ligeiro (Polícia)', 'keyboard', 'h')
+RegisterCommand('policiaheliataque', function()
+    if myRole ~= 'cop' or not roundActive or isFrozen then return end
+
+    local now = GetGameTimer()
+    if now < heliAtaqueCooldown then
+        local remaining = math.ceil((heliAtaqueCooldown - now) / 1000)
+        notify('⏳ Heli de Ataque em cooldown (' .. remaining .. 's) !', 'error', 3000)
+        return
+    end
+
+    heliAtaqueCooldown = now + 90000 -- 90s cooldown (1min e meio)
+    notify('🚁 Heli de Ataque despachado! Tempo de voo: 30s', 'success', 5000)
+
+    Citizen.CreateThread(function()
+        local hHash = GetHashKey('buzzard')
+        RequestModel(hHash)
+        local t = 0
+        while not HasModelLoaded(hHash) and t < 100 do Citizen.Wait(100); t = t + 1 end
+        if not HasModelLoaded(hHash) then 
+            notify('❌ Erro: O sistema não carregou o Helicóptero a tempo.', 'error', 4000)
+            return 
+        end
+
+        local pilotHash = GetHashKey('s_m_y_swat_01')
+        RequestModel(pilotHash)
+        t = 0
+        while not HasModelLoaded(pilotHash) and t < 100 do Citizen.Wait(100); t = t + 1 end
+
+        -- Procurar o ladrão mais óbvio
+        local bestPed = nil
+        local ped = PlayerPedId()
+        for _, pid in ipairs(GetActivePlayers()) do
+            local enemyPed = GetPlayerPed(pid)
+            if enemyPed ~= ped and DoesEntityExist(enemyPed) and not IsPedDeadOrDying(enemyPed, true) then
+                local svrId = GetPlayerServerId(pid)
+                if activeRobbers[tonumber(svrId)] or activeRobbers[tostring(svrId)] then
+                    bestPed = enemyPed
+                    break -- Foca-se logo no 1º ladrão que encontrar (costuma ser 1v1)
+                end
+            end
+        end
+
+        if not bestPed then
+            notify('❌ Nenhum Ladrão encontrado na área pentru focar ataque.', 'error', 4000)
+            return
+        end
+
+        -- Spawnar atrás e acima do alvo
+        local targetFwd = GetEntityForwardVector(bestPed)
+        local targetC   = GetEntityCoords(bestPed)
+        local spawnHX   = targetC.x - (targetFwd.x * 100.0)
+        local spawnHY   = targetC.y - (targetFwd.y * 100.0)
+        local spawnHZ   = targetC.z + 65.0
+
+        local heli = CreateVehicle(hHash, spawnHX, spawnHY, spawnHZ, 0.0, true, false)
+        local pilot = CreatePedInsideVehicle(heli, 26, pilotHash, -1, true, false)
+        
+        SetEntityAsMissionEntity(heli, true, true)
+        SetEntityAsMissionEntity(pilot, true, true)
+        SetVehicleEngineOn(heli, true, false, true)
+        SetHeliBladesFullSpeed(heli)
+        SetPedAccuracy(pilot, 100)
+        SetPedCombatAttributes(pilot, 46, true)
+        SetPedCombatAttributes(pilot, 5, true)
+        
+        -- Configurar para Missão e Disparo Agressivo de Mísseis
+        local rocketHash = GetHashKey('weapon_hominglauncher')
+        GiveWeaponToPed(pilot, rocketHash, 20, false, true)
+        TaskHeliMission(pilot, heli, 0, bestPed, 0.0, 0.0, 0.0, 9, 40.0, 30.0, -1.0, 0, 10, -1.0, 0)
+        
+        local hBlip = AddBlipForEntity(heli)
+        SetBlipSprite(hBlip, 422)
+        SetBlipColour(hBlip, 1) -- Vermelho para Ataque
+        SetBlipScale(hBlip, 1.2)
+        SetBlipAsShortRange(hBlip, false)
+        BeginTextCommandSetBlipName('STRING')
+        AddTextComponentString('Heli Ataque (Missel)')
+        EndTextCommandSetBlipName(hBlip)
+
+        SetModelAsNoLongerNeeded(hHash)
+        SetModelAsNoLongerNeeded(pilotHash)
+
+        -- Duração 30 Segundos
+        Citizen.Wait(30000)
+
+        if DoesBlipExist(hBlip) then RemoveBlip(hBlip) end
+        if DoesEntityExist(heli) then
+            -- Manda-o fugir em vez de explodir e delete após longe
+            TaskHeliMission(pilot, heli, 0, 0, targetC.x, targetC.y, targetC.z + 500.0, 4, 50.0, 50.0, -1.0, 0, 10, -1.0, 0)
+            Citizen.Wait(10000)
+            if DoesEntityExist(pilot) then DeleteEntity(pilot) end
+            if DoesEntityExist(heli)  then DeleteEntity(heli) end
+            notify('🚁 Heli de Ataque retirou-se sem munição.', 'primary', 4000)
+        end
+    end)
 end, false)
 
 -- ── CHOQUE EMP (cop only) — tecla E ──────────────────────────────
@@ -648,12 +777,8 @@ RegisterCommand('policiaemp', function()
     empCooldown = now + 10000 -- 10s cooldown
     notify('⚡ Disparo EMP activado!', 'success', 3000)
 
-    -- Efeito visual de pulso do nosso carro
-    local myCoords = GetEntityCoords(veh)
-    AddExplosion(myCoords.x, myCoords.y, myCoords.z, 69, 5.0, true, false, 0.0)
-
-    -- Procurar Ladrões Num Raio de 30m
     local hit = false
+    local myCoords = GetEntityCoords(veh)
     for _, pid in ipairs(GetActivePlayers()) do
         local enemyPed = GetPlayerPed(pid)
         if enemyPed ~= ped and DoesEntityExist(enemyPed) then
@@ -674,7 +799,7 @@ RegisterCommand('policiaemp', function()
     end
     
     if hit then
-        notify('⚡ Carro do Ladrão atingido! Motor congelado!', 'success', 4000)
+        notify('⚡ Carro do Ladrão atingido! Motor congelado por 4 Segundos!', 'success', 5000)
     else
         notify('💨 EMP falhou. Ninguém no raio!', 'error', 3000)
     end
@@ -686,14 +811,14 @@ AddEventHandler('policia:receiveEMP', function()
         local ped = PlayerPedId()
         local veh = GetVehiclePedIsIn(ped, false)
         if DoesEntityExist(veh) then
-            notify('💥 SOFRESTE UM EMP! O motor parou!', 'error', 5000)
+            notify('💥 SOFRESTE UM CHOQUE EMP! O motor parou durante 4 Segundos!', 'error', 5000)
             SetVehicleEngineOn(veh, false, true, true)
             SetVehicleEngineHealth(veh, -0.0)
-            
-            local c = GetEntityCoords(veh)
-            AddExplosion(c.x, c.y, c.z, 64, 1.0, true, false, 0.0)
 
-            -- Fica a zeros durante 4 segundos e retoma graças à thread de indestrutibilidade
+            -- Som nativo de alarme interior como aviso em vez de explosão
+            PlaySoundFrontend(-1, "Beep_Red", "DLC_HEIST_HACKING_SNAKE_SOUNDS", true)
+            
+            -- Motor fica a zero, veículo fica inerte... Retoma lentamente com o regen do "SetVehicleEngineHealth a 1000" do loop global
         end
     end
 end)
@@ -1906,6 +2031,17 @@ Citizen.CreateThread(function()
             SetVehicleDensityMultiplierThisFrame(0.0)
             SetRandomVehicleDensityMultiplierThisFrame(0.0)
             SetParkedVehicleDensityMultiplierThisFrame(0.0)
+            
+            -- 1.5. Apagar brutal e ativamente as falsas existências do motor (Tráfego que a engine crie teimosamente)
+            for _, veh in ipairs(GetGamePool('CVehicle')) do
+                if DoesEntityExist(veh) and GetEntityModel(veh) ~= busHash then
+                    -- Se o veículo não é do script nem de um player (não é Missão), a IA do jogo tentou pô-lo nas ruas. Elimina.
+                    if not IsEntityAMissionEntity(veh) then
+                        SetEntityAsMissionEntity(veh, true, true)
+                        DeleteEntity(veh)
+                    end
+                end
+            end
             
             -- 2. Sistema Custom de População de Autocarros a cada 2 segundos
             if GetGameTimer() % 2000 == 0 then

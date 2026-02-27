@@ -68,7 +68,7 @@ window.addEventListener('message', (e) => {
                 robberCountEl.classList.remove('hidden');
                 buildKeybinds([
                     { key: 'G', label: 'Algemar' },
-                    { key: 'H', label: 'Heli Apoio' },
+                    { key: 'H', label: 'Heli Ataque (Míssil)' },
                     { key: 'N', label: 'Drone (Scan)' },
                     { key: 'U', label: 'Turret (Fora do Carro)' },
                     { key: 'E', label: 'Choque EMP' },
