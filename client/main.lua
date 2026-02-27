@@ -1874,13 +1874,6 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
             Citizen.Wait(3000)
             elapsed = elapsed + 3
         end
-                    end
-                end
-            end
-
-            Citizen.Wait(3000)
-            elapsed = elapsed + 3
-        end
 
         -- Limpar de forma limpa caso termine o tempo
         if not isKamikaze then
