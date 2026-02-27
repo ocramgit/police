@@ -11,7 +11,7 @@ Config.outOfBoundsWarnSecs = 15
 Config.zones = {
     {
         name   = '🏙️ Centro da Cidade',
-        x      = 200.0, y = -900.0, z = 30.0, radius = 1100.0,
+        x      = 200.0, y = -900.0, z = 30.0, radius = 1350.0,
         copsSpawns = {
             vector4( 253.71, -580.18, 43.11, 164.0),
             vector4( 130.30, -635.82, 43.74,  90.0),
@@ -36,7 +36,7 @@ Config.zones = {
     },
     {
         name   = '✈️ Aeroporto',
-        x      = -1050.0, y = -2900.0, z = 13.0, radius = 900.0,
+        x      = -1050.0, y = -2900.0, z = 13.0, radius = 1150.0,
         copsSpawns = {
             vector4(-1034.55,-2729.12,  13.75,  90.0),
             vector4( -986.78,-2821.73,  13.75, 180.0),
@@ -54,7 +54,7 @@ Config.zones = {
     },
     {
         name   = '🏖️ Sandy Shores',
-        x      = 1850.0, y = 3700.0, z = 33.0, radius = 850.0,
+        x      = 1850.0, y = 3700.0, z = 33.0, radius = 1100.0,
         copsSpawns = {
             vector4(1853.94, 3685.84, 34.27, 210.0),
             vector4(1960.14, 3740.59, 32.35, 270.0),
@@ -72,7 +72,7 @@ Config.zones = {
     },
     {
         name   = '⛰️ Paleto Bay',
-        x      = -265.0, y = 6235.0, z = 31.0, radius = 800.0,
+        x      = -265.0, y = 6235.0, z = 31.0, radius = 1050.0,
         copsSpawns = {
             vector4(-265.54, 6230.20, 31.49, 225.0),
             vector4(-260.00, 6060.00, 43.00, 180.0),
@@ -90,7 +90,7 @@ Config.zones = {
     },
     {
         name   = '🏭 Zona Industrial (La Mesa)',
-        x      = 800.0, y = -1900.0, z = 26.0, radius = 700.0,
+        x      = 800.0, y = -1900.0, z = 26.0, radius = 950.0,
         copsSpawns = {
             vector4( 873.62,-1891.00, 26.59, 270.0),
             vector4( 700.00,-1800.00, 28.00,  90.0),
@@ -108,9 +108,9 @@ Config.zones = {
     },
 }
 
--- Polícia: Carros de intercepção e frota próprios da Polícia
+-- Polícia: Supercarros topo de gama (A pedido)
 Config.policeCars = { 
-    'police', 'police2', 'police3', 'police4', 'fbi' 
+    't20', 'zentorno', 'osiris', 'nero', 'italiRSX' 
 }
 
 -- Ladrão: Carros Desportivos que são muito bons, mas que a polícia alcança (Tier A)

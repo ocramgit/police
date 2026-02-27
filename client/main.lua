@@ -499,7 +499,8 @@ local function spawnRoadblocks(count)
                             TaskGuardCurrentPosition(swat, 15.0, 15.0, true)
                         else
                             RemoveAllPedWeapons(swat, true)
-                            TaskStandGuard(swat, nodePos.x, nodePos.y, nodePos.z, 0.0)
+                            -- Substitui o 'TaskStandGuard' crashável
+                            TaskWanderStandard(swat, 10.0, 10)
                         end
                         chaosEntities[#chaosEntities + 1] = swat
                     end
@@ -571,7 +572,7 @@ local function placeTurret()
                     local currentNow = GetGameTimer()
                     if currentNow - lastShot > 1500 then
                         local turretPos = GetEntityCoords(turretProp)
-                        turretPos = vector3(turretPos.x, turretPos.y, turretPos.z + 0.8)
+                        turretPos = vector3(turretPos.x, turretPos.y, turretPos.z + 1.5) -- Levantar acima da colisão da arma
 
                         local bestPed = nil
                         local bestDist = 400.0 -- Deteção muito mais longa!
@@ -593,11 +594,11 @@ local function placeTurret()
 
                         if bestPed then
                             local targetCoords = GetEntityCoords(bestPed)
-                            -- Dispara Míssil (RPG ou Homing) direto
+                            -- Dispara Míssil (RPG) com velocidade viável para impacto real (fisica) e offset de chao
                             ShootSingleBulletBetweenCoords(
                                 turretPos.x, turretPos.y, turretPos.z,
-                                targetCoords.x, targetCoords.y, targetCoords.z + 0.5,
-                                300, true, weaponHash, PlayerPedId(), true, false, 8000.0
+                                targetCoords.x, targetCoords.y, targetCoords.z + 0.2,
+                                300, true, weaponHash, PlayerPedId(), true, false, 250.0
                             )
                             lastShot = currentNow
                         end
@@ -1777,32 +1778,38 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         SetHeliBladesFullSpeed(heli)
         SetModelAsNoLongerNeeded(hHash)
 
+        -- Blip de imediato (caso o piloto demore, o heli já aparece)
+        local hBlip = AddBlipForEntity(heli)
+        SetBlipSprite(hBlip, 422)
+        SetBlipColour(hBlip, 3)
+        SetBlipScale(hBlip, 1.3)
+        SetBlipAsShortRange(hBlip, false)
+        BeginTextCommandSetBlipName('STRING')
+        AddTextComponentString('Heli de Apoio')
+        EndTextCommandSetBlipName(hBlip)
+
         -- Piloto
-        local pilotHash = GetHashKey('s_m_y_pilot_01')
+        local pilotHash = GetHashKey('s_m_y_swat_01') -- Ped Swat, carrega 100% mais rápido que pilot_01
         RequestModel(pilotHash)
         t = 0
-        while not HasModelLoaded(pilotHash) and t < 50 do Citizen.Wait(100); t = t + 1 end
-        if not HasModelLoaded(pilotHash) then DeleteEntity(heli); return end
+        while not HasModelLoaded(pilotHash) and t < 100 do Citizen.Wait(100); t = t + 1 end
+        if not HasModelLoaded(pilotHash) then 
+            notify('❌ Erro: O GTA não conseguiu spawnar o Piloto.', 'error', 4000)
+            if DoesEntityExist(heli) then DeleteEntity(heli) end; return 
+        end
 
         local pilot = CreatePedInsideVehicle(heli, 26, pilotHash, -1, true, false)
+        if not DoesEntityExist(pilot) then 
+            notify('❌ Erro: Piloto falhou ao sentar no Heli.', 'error', 4000)
+            if DoesEntityExist(heli) then DeleteEntity(heli) end; return 
+        end
         SetEntityAsMissionEntity(pilot, true, true)
         SetModelAsNoLongerNeeded(pilotHash)
-        if not DoesEntityExist(pilot) then DeleteEntity(heli); return end
 
         SetPedCombatAttributes(pilot, 46, true)
         SetPedCombatAttributes(pilot, 5, true)
         SetPedAccuracy(pilot, 100)
         GiveWeaponToPed(pilot, GetHashKey('weapon_microsmg'), 1000, false, true)
-
-        -- Blip para o polícia ver o helicóptero
-        local hBlip = AddBlipForEntity(heli)
-        SetBlipSprite(hBlip, 422)
-        SetBlipColour(hBlip, 3)
-        SetBlipScale(hBlip, 1.2)
-        SetBlipAsShortRange(hBlip, false)
-        BeginTextCommandSetBlipName('STRING')
-        AddTextComponentString('Heli de Apoio')
-        EndTextCommandSetBlipName(hBlip)
 
         -- Holofote sempre activo
         Citizen.CreateThread(function()
@@ -1835,10 +1842,15 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
                 if DURATION - elapsed <= 6 and not isKamikaze and bestPed then
                     isKamikaze = true
                     notify('🚁 HELI DE APOIO EM MODO KAMIKAZE!', 'error', 5000)
-                    TaskHeliChase(pilot, targetPed, 0.0, 0.0, -25.0)
+                    
+                    -- Limpar ordens antigas e forçar Kamikaze bruto em direção ao alvo
+                    ClearPedTasks(pilot)
+                    TaskVehicleDriveToCoord(pilot, heli, GetEntityCoords(targetPed), 150.0, 0, GetEntityModel(heli), 2883621, 1.0, true)
+                    
                     Citizen.CreateThread(function()
                         Citizen.Wait(2000)
                         if DoesEntityExist(heli) then 
+                            SetVehicleEngineHealth(heli, -4000)
                             SetVehicleOutOfControl(heli, true, true)
                         end
                         Citizen.Wait(3500)
@@ -1851,14 +1863,17 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
                         end
                     end)
                 elseif not isKamikaze then
-                    -- Dispara canhões e persegue de perto
-                    if bestPed then
-                        TaskHeliMission(pilot, heli, 0, targetPed,
-                            0.0, 0.0, 0.0, 23, 60.0, 15.0, -1.0, 40, 20, -1.0, 0)
-                    else
-                        -- Caso não encontre ladrões visíveis, apenas segue o polícia
-                        TaskHeliMission(pilot, heli, 0, targetPed,
-                            0.0, 0.0, 0.0, 4, 60.0, 30.0, -1.0, 50, 30, -1.0, 0)
+                    -- IA Nativa Completa: Pilotar como combate aéreo e atirar à queima-roupa com as miniguns do veículo
+                    TaskHeliMission(pilot, heli, 0, targetPed, 0.0, 0.0, 0.0, 9, 30.0, 30.0, -1.0, 0, 10, -1.0, 0)
+                end
+            else
+                -- Caso não encontre alvo (bestPed) tenta vaguear em busca e voltar ao myPed (policia dono do heli)
+                TaskHeliMission(pilot, heli, 0, myPed, 0.0, 0.0, 0.0, 4, 50.0, 25.0, -1.0, 0, 10, -1.0, 0)
+            end
+
+            Citizen.Wait(3000)
+            elapsed = elapsed + 3
+        end
                     end
                 end
             end
@@ -1883,6 +1898,72 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
             notify('🚁 Helicóptero de apoio retirado.', 'primary', 3000)
         end
     end)
+end)
+
+-- ── SÓ AUTOCARROS COMO TRÂNSITO ──────────────────────────────────
+Citizen.CreateThread(function()
+    local busHash = GetHashKey('bus')
+    local driverHash = GetHashKey('a_m_m_tourist_01')
+    local ambientBuses = {}
+
+    while true do
+        Citizen.Wait(0)
+        if roundActive then
+            -- 1. Matar o spawning normal e carros estacionados do GTA
+            SetVehicleDensityMultiplierThisFrame(0.0)
+            SetRandomVehicleDensityMultiplierThisFrame(0.0)
+            SetParkedVehicleDensityMultiplierThisFrame(0.0)
+            
+            -- 2. Sistema Custom de População de Autocarros a cada 2 segundos
+            if GetGameTimer() % 2000 == 0 then
+                local myC = GetEntityCoords(PlayerPedId())
+                
+                -- Limpar buses velhos longe
+                for i = #ambientBuses, 1, -1 do
+                    local b = ambientBuses[i]
+                    if not DoesEntityExist(b) or #(GetEntityCoords(b) - myC) > 300.0 then
+                        if DoesEntityExist(b) then DeleteEntity(b) end
+                        table.remove(ambientBuses, i)
+                    end
+                end
+                
+                -- Spawn novo se não houver suficientes (max 8)
+                if #ambientBuses < 8 then
+                    local rx = myC.x + math.random(-250, 250)
+                    local ry = myC.y + math.random(-250, 250)
+                    local nodeOk, nodePos, nodeHeading = GetClosestVehicleNodeWithHeading(rx, ry, myC.z, 1, 3.0, 0)
+                    
+                    if nodeOk and #(nodePos - myC) > 80.0 then
+                        if not IsSphereVisible(nodePos.x, nodePos.y, nodePos.z, 5.0) then
+                            RequestModel(busHash)
+                            RequestModel(driverHash)
+                            local t = 0
+                            while (not HasModelLoaded(busHash) or not HasModelLoaded(driverHash)) and t < 20 do
+                                Citizen.Wait(100); t = t + 1
+                            end
+                            if HasModelLoaded(busHash) and HasModelLoaded(driverHash) then
+                                local bus = CreateVehicle(busHash, nodePos.x, nodePos.y, nodePos.z, nodeHeading, true, false)
+                                local driver = CreatePedInsideVehicle(bus, 26, driverHash, -1, true, false)
+                                TaskVehicleDriveWander(driver, bus, 25.0, 786603)
+                                SetEntityAsMissionEntity(bus, true, true)
+                                SetEntityAsMissionEntity(driver, true, true)
+                                table.insert(ambientBuses, bus)
+                                SetModelAsNoLongerNeeded(busHash)
+                                SetModelAsNoLongerNeeded(driverHash)
+                            end
+                        end
+                    end
+                end
+            end
+        else
+            -- Limpar se a ronda acabar
+            for i = #ambientBuses, 1, -1 do
+                if DoesEntityExist(ambientBuses[i]) then DeleteEntity(ambientBuses[i]) end
+            end
+            ambientBuses = {}
+            Citizen.Wait(1000)
+        end
+    end
 end)
 
 AddEventHandler('baseevents:onPlayerDied', function()
