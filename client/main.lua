@@ -42,6 +42,11 @@ local function upgradeVehicle(veh, isCop)
     end
     ToggleVehicleMod(veh, 18, true)
     ToggleVehicleMod(veh, 22, true)
+    
+    -- TXAdmin Boost (Aceleração e Força extremas)
+    SetVehicleEnginePowerMultiplier(veh, 20.0)
+    SetVehicleEngineTorqueMultiplier(veh, 20.0)
+
     SetVehicleEngineHealth(veh, 1000.0)
     SetVehicleBodyHealth(veh, 1000.0)
     SetVehiclePetrolTankHealth(veh, 1000.0)
@@ -559,7 +564,7 @@ local function placeTurret()
             notify('💥 Turret de Bazuca automática instalada!', 'success', 3000)
 
             Citizen.CreateThread(function()
-                local weaponHash = GetHashKey('weapon_hominglauncher')
+                local weaponHash = GetHashKey('weapon_rpg') -- Míssil puro e duro (evita bug de não disparar por falta de lock nativo)
                 local lastShot = 0
                 while roundActive and DoesEntityExist(turretProp) do
                     Citizen.Wait(500)
@@ -574,11 +579,11 @@ local function placeTurret()
                             local enemyPed = GetPlayerPed(pid)
                             if enemyPed ~= PlayerPedId() and DoesEntityExist(enemyPed) and not IsPedDeadOrDying(enemyPed, true) then
                                 local svrId = GetPlayerServerId(pid)
-                                if activeRobbers[svrId] then -- Ataca apenas Ladrões registados
+                                -- Converter para number devido a falhas de conversão JSON no FiveM
+                                if activeRobbers[tonumber(svrId)] or activeRobbers[tostring(svrId)] then
                                     local enemyCoords = GetEntityCoords(enemyPed)
                                     local d = #(turretPos - enemyCoords)
                                     if d < bestDist then
-                                        -- Verificação de linha de visão não estrita ajuda em distâncias muito longas no GTA
                                         bestDist = d
                                         bestPed = enemyPed
                                     end
@@ -639,7 +644,7 @@ RegisterCommand('policiaemp', function()
         return
     end
 
-    empCooldown = now + 45000 -- 45s cooldown
+    empCooldown = now + 10000 -- 10s cooldown
     notify('⚡ Disparo EMP activado!', 'success', 3000)
 
     -- Efeito visual de pulso do nosso carro
@@ -652,7 +657,7 @@ RegisterCommand('policiaemp', function()
         local enemyPed = GetPlayerPed(pid)
         if enemyPed ~= ped and DoesEntityExist(enemyPed) then
             local svrId = GetPlayerServerId(pid)
-            if activeRobbers[svrId] then
+            if activeRobbers[tonumber(svrId)] or activeRobbers[tostring(svrId)] then
                 local eC = GetEntityCoords(enemyPed)
                 local dist = #(myCoords - eC)
                 if dist < 45.0 then
@@ -1511,7 +1516,12 @@ end)
 
 RegisterNetEvent('policia:syncRoles')
 AddEventHandler('policia:syncRoles', function(svrCops, svrRobbers)
-    activeRobbers = svrRobbers or {}
+    activeRobbers = {}
+    if svrRobbers then
+        for k, v in pairs(svrRobbers) do
+            activeRobbers[tonumber(k)] = v
+        end
+    end
 end)
 
 RegisterNetEvent('policia:setupZone')
@@ -1741,14 +1751,14 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         local hHash = GetHashKey('buzzard2')
         RequestModel(hHash)
         local t = 0
-        while not HasModelLoaded(hHash) and t < 30 do Citizen.Wait(100); t = t + 1 end
+        while not HasModelLoaded(hHash) and t < 100 do Citizen.Wait(100); t = t + 1 end
         if not HasModelLoaded(hHash) then
             hHash = GetHashKey('buzzard')
             RequestModel(hHash)
             t = 0
-            while not HasModelLoaded(hHash) and t < 30 do Citizen.Wait(100); t = t + 1 end
+            while not HasModelLoaded(hHash) and t < 100 do Citizen.Wait(100); t = t + 1 end
             if not HasModelLoaded(hHash) then
-                notify('❌ Não foi possível spawnar o heli!', 'error', 4000)
+                notify('❌ O Helicóptero demorou demasiado tempo a carregar. Tenta de novo.', 'error', 4000)
                 return
             end
         end
@@ -1758,6 +1768,10 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         local spawnZ = myC.z + (heliAlt or Config.heliSupport.heliAlt)
 
         local heli = CreateVehicle(hHash, spawnX, spawnY, spawnZ, 0.0, true, false)
+        if not DoesEntityExist(heli) then
+            notify('❌ Erro crítico: O motor recusou spawn do veículo Heli.', 'error', 4000)
+            return
+        end
         SetEntityAsMissionEntity(heli, true, true)
         SetVehicleEngineOn(heli, true, false, true)
         SetHeliBladesFullSpeed(heli)
@@ -1767,7 +1781,7 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         local pilotHash = GetHashKey('s_m_y_pilot_01')
         RequestModel(pilotHash)
         t = 0
-        while not HasModelLoaded(pilotHash) and t < 20 do Citizen.Wait(100); t = t + 1 end
+        while not HasModelLoaded(pilotHash) and t < 50 do Citizen.Wait(100); t = t + 1 end
         if not HasModelLoaded(pilotHash) then DeleteEntity(heli); return end
 
         local pilot = CreatePedInsideVehicle(heli, 26, pilotHash, -1, true, false)
@@ -1784,6 +1798,8 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
         local hBlip = AddBlipForEntity(heli)
         SetBlipSprite(hBlip, 422)
         SetBlipColour(hBlip, 3)
+        SetBlipScale(hBlip, 1.2)
+        SetBlipAsShortRange(hBlip, false)
         BeginTextCommandSetBlipName('STRING')
         AddTextComponentString('Heli de Apoio')
         EndTextCommandSetBlipName(hBlip)
@@ -1806,7 +1822,7 @@ AddEventHandler('policia:spawnHeli', function(targetCoords, duration, heliAlt)
                 local p = GetPlayerPed(pid)
                 if p ~= myPed and DoesEntityExist(p) and not IsPedDeadOrDying(p, true) then
                     local svrId = GetPlayerServerId(pid)
-                    if activeRobbers[svrId] then
+                    if activeRobbers[tonumber(svrId)] or activeRobbers[tostring(svrId)] then
                         local d = #(GetEntityCoords(heli) - GetEntityCoords(p))
                         if d < bestDist then bestDist = d; bestPed = p end
                     end

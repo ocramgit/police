@@ -108,14 +108,14 @@ Config.zones = {
     },
 }
 
--- Polícia: Supercarros topo de gama para velocidade extrema
+-- Polícia: Carros de intercepção e frota próprios da Polícia
 Config.policeCars = { 
-    't20', 'zentorno', 'osiris', 'nero', 'italiRSX' 
+    'police', 'police2', 'police3', 'police4', 'fbi' 
 }
 
--- Ladrão: Supercarros que rivalizam com a polícia
+-- Ladrão: Carros Desportivos que são muito bons, mas que a polícia alcança (Tier A)
 Config.robberCars = { 
-    'krieger', 'emerus', 'deveste', 'entityxf', 'vagner' 
+    'kuruma', 'sultanrs', 'jester', 'massacro', 'elegy' 
 }
 
 -- ── ARMAS ───────────────────────────────────────────────────
