@@ -38,7 +38,6 @@ window.addEventListener('load', () => {
     heliBarEl = document.getElementById('heli-bar');
     heliTimerEl = document.getElementById('heli-timer');
     borderWarnEl = document.getElementById('border-warn');
-    spikeCountEl = document.getElementById('spike-count');
     keybindsPanel = document.getElementById('keybinds-panel');
     keybindsList = document.getElementById('keybinds-list');
     killFeed = document.getElementById('kill-feed');
@@ -65,19 +64,23 @@ window.addEventListener('message', (e) => {
             if (myRole === 'cop') {
                 roleIcon.textContent = '🚓';
                 roleLabel.textContent = 'POLÍCIA';
-                actionHint.classList.remove('hidden');
+                if (actionHint) actionHint.classList.add('hidden');
                 robberCountEl.classList.remove('hidden');
                 buildKeybinds([
                     { key: 'G', label: 'Algemar' },
                     { key: 'H', label: 'Heli Apoio' },
-                    { key: 'K', label: 'Spike Strip' },
-                    { key: 'J', label: 'Drone' },
+                    { key: 'N', label: 'Drone (Scan)' },
+                    { key: 'U', label: 'Turret (Fora do Carro)' },
+                    { key: 'E', label: 'Choque EMP' },
                 ]);
             } else {
                 roleIcon.textContent = '🔪';
                 roleLabel.textContent = 'LADRÃO';
-                actionHint.classList.add('hidden');
-                buildKeybinds([{ key: '/flip', label: 'Endireitar carro' }]);
+                if (actionHint) actionHint.classList.add('hidden');
+                buildKeybinds([
+                    { key: 'X', label: 'Cortina de Fumo' },
+                    { key: '/flip', label: 'Endireitar carro' }
+                ]);
             }
 
             waveBadge.classList.add('hidden');
@@ -195,14 +198,6 @@ window.addEventListener('message', (e) => {
             } else {
                 borderWarnEl.classList.add('hidden');
             }
-            break;
-        }
-
-        // ── Spike count (cop)
-        case 'spikeCount': {
-            if (!spikeCountEl) break;
-            spikeCountEl.textContent = '🚨 Spikes: ' + d.count;
-            spikeCountEl.classList.toggle('empty', d.count <= 0);
             break;
         }
     }

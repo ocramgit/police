@@ -108,17 +108,15 @@ Config.zones = {
     },
 }
 
--- ── VEÍCULOS ────────────────────────────────────────────────
--- Polícia: Apenas sedans ou desportivos (sem carrinhas/SUVs)
-Config.policeCars = {
-    'police',      -- Police Cruiser          (LSPD clássico)
-    'police2',     -- Police Cruiser 2        (LSPD charger)
-    'police3',     -- Police Cruiser 3        (LSPD taurus)
-    'police4',     -- Unmarked Cruiser        (camuflado sedan)
-    'fbi',         -- FIB Sedan               (alguns fbi são sedans, fbi2 é SUV)
-    'sheriff',     -- Sheriff Cruiser         (Stainer sedan)
+-- Polícia: Supercarros topo de gama para velocidade extrema
+Config.policeCars = { 
+    't20', 'zentorno', 'osiris', 'nero', 'italiRSX' 
 }
-Config.robberCars = { 'blista', 'issi2', 'prairie', 'rhapsody', 'ingot' }
+
+-- Ladrão: Supercarros que rivalizam com a polícia
+Config.robberCars = { 
+    'krieger', 'emerus', 'deveste', 'entityxf', 'vagner' 
+}
 
 -- ── ARMAS ───────────────────────────────────────────────────
 Config.policeWeapon  = 'weapon_pistol'

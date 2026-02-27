@@ -404,3 +404,13 @@ AddEventHandler('policia:startServerDrone', function()
         TriggerClientEvent('policia:stopDroneBlips', src)
     end)
 end)
+
+RegisterServerEvent('policia:triggerEMP')
+AddEventHandler('policia:triggerEMP', function(targetId)
+    local src = source
+    if not cops[src] then return end
+    
+    if robbers[targetId] then
+        TriggerClientEvent('policia:receiveEMP', targetId)
+    end
+end)
