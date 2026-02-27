@@ -135,6 +135,9 @@ local function startRound(numCops, lockSeconds, waveMode)
         giveItem(src, Config.robberWeapon, 1, {quality = 100})
     end
 
+    -- Sincronizar listas para os clientes (Útil para a Turret reconhecer o Ladrão)
+    TriggerClientEvent('policia:syncRoles', -1, cops, robbers)
+
     -- Libertar polícias após lockSeconds
     Citizen.CreateThread(function()
         Citizen.Wait(lockSeconds * 1000)
@@ -217,60 +220,50 @@ end
 
 -- ── Evento: Tentar algemar (G) ────────────────────────────────
 
-RegisterServerEvent('policia:tryArrest')
-AddEventHandler('policia:tryArrest', function()
+RegisterServerEvent('policia:tryArrestClientDistance')
+AddEventHandler('policia:tryArrestClientDistance', function(targetSrc, reportedDistance)
     local src = source
     if not roundActive or not cops[src] then return end
 
-    local copPed = GetPlayerPed(src)
-    if IsPedInAnyVehicle(copPed, false) then
-        TriggerClientEvent('QBCore:Notify', src, '❌ Tens de sair do carro para algemar!', 'error', 3000)
+    if not robbers[targetSrc] then 
+        TriggerClientEvent('QBCore:Notify', src, '❌ Isso não é um ladrão!', 'error', 3000)
         return
     end
 
-    local copCoords = GetEntityCoords(copPed)
+    local copPed = GetPlayerPed(src)
+    local robberPed = GetPlayerPed(targetSrc)
+    
+    local inCar = IsPedInAnyVehicle(robberPed, false)
+    local allowedRange = inCar and 7.0 or 4.0
 
-    for robberSrc in pairs(robbers) do
-        local robberPed = GetPlayerPed(robberSrc)
-        local robberCoords = GetEntityCoords(robberPed)
-        local dist = #(copCoords - robberCoords)
+    if reportedDistance <= allowedRange then
+        local robberName = GetPlayerName(targetSrc)
+        local copName    = GetPlayerName(src)
 
-        -- Alcance aumentado se o ladrão estiver no carro (6m vs 3.5m)
-        local inCar = IsPedInAnyVehicle(robberPed, false)
-        local range = inCar and 6.0 or Config.arrestRange
-
-        if dist <= range then
-            local robberName = GetPlayerName(robberSrc)
-            local copName    = GetPlayerName(src)
-
-            if inCar then
-                -- Tirar do carro com animação, depois algemar
-                TriggerClientEvent('policia:forceLeaveVehicle', robberSrc)
-                TriggerClientEvent('QBCore:Notify', src, '🚗 A tirar o suspeito do carro...', 'warning', 3000)
-                Citizen.CreateThread(function()
-                    Citizen.Wait(2500)
-                    if not roundActive or not robbers[robberSrc] then return end
-                    robbers[robberSrc] = nil
-                    livingRobbers = livingRobbers - 1
-                    TriggerClientEvent('policia:youWereArrested', robberSrc)
-                    notifyAll(('🔒 %s foi ARRASTADO E ALGEMADO por %s!'):format(robberName, copName), 'error')
-                    broadcastKillFeed('arrest', copName, robberName)
-                    if livingRobbers <= 0 then endRound('Todos os ladrões foram apanhados!', 'cops') end
-                end)
-            else
-                -- Algema normal (a pé)
-                robbers[robberSrc] = nil
+        if inCar then
+            TriggerClientEvent('policia:forceLeaveVehicle', targetSrc)
+            TriggerClientEvent('QBCore:Notify', src, '🚗 A tirar o suspeito do carro...', 'warning', 3000)
+            Citizen.CreateThread(function()
+                Citizen.Wait(2500)
+                if not roundActive or not robbers[targetSrc] then return end
+                robbers[targetSrc] = nil
                 livingRobbers = livingRobbers - 1
-                TriggerClientEvent('policia:youWereArrested', robberSrc)
-                notifyAll(('🔒 %s foi ALGEMADO por %s!'):format(robberName, copName), 'error')
+                TriggerClientEvent('policia:youWereArrested', targetSrc)
+                notifyAll(('🔒 %s foi ARRASTADO E ALGEMADO por %s!'):format(robberName, copName), 'error')
                 broadcastKillFeed('arrest', copName, robberName)
                 if livingRobbers <= 0 then endRound('Todos os ladrões foram apanhados!', 'cops') end
-            end
-            return
+            end)
+        else
+            robbers[targetSrc] = nil
+            livingRobbers = livingRobbers - 1
+            TriggerClientEvent('policia:youWereArrested', targetSrc)
+            notifyAll(('🔒 %s foi ALGEMADO por %s!'):format(robberName, copName), 'error')
+            broadcastKillFeed('arrest', copName, robberName)
+            if livingRobbers <= 0 then endRound('Todos os ladrões foram apanhados!', 'cops') end
         end
+    else
+        TriggerClientEvent('QBCore:Notify', src, '❌ O ladrão está demasiado longe!', 'error', 3000)
     end
-
-    TriggerClientEvent('QBCore:Notify', src, '❌ Nenhum suspeito ao alcance!', 'error', 3000)
 end)
 
 -- ── Evento: Ladrão morreu ─────────────────────────────────────
@@ -386,3 +379,28 @@ end, false)
 RegisterCommand('terminarpolicia', function()
     endRound('Ronda cancelada manualmente.', 'draw')
 end, false)
+
+RegisterServerEvent('policia:startServerDrone')
+AddEventHandler('policia:startServerDrone', function()
+    local src = source
+    if not roundActive or not cops[src] then return end
+
+    Citizen.CreateThread(function()
+        local elapsed = 0
+        while roundActive and elapsed < 30 do
+            local positions = {}
+            for robberSrc in pairs(robbers) do
+                local rPed = GetPlayerPed(robberSrc)
+                if DoesEntityExist(rPed) then
+                    local coords = GetEntityCoords(rPed)
+                    positions[#positions+1] = { x = coords.x, y = coords.y, z = coords.z }
+                end
+            end
+            
+            TriggerClientEvent('policia:updateDroneBlips', src, positions)
+            Citizen.Wait(1000)
+            elapsed = elapsed + 1
+        end
+        TriggerClientEvent('policia:stopDroneBlips', src)
+    end)
+end)
