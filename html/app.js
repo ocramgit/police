@@ -68,10 +68,13 @@ window.addEventListener('message', (e) => {
                 robberCountEl.classList.remove('hidden');
                 buildKeybinds([
                     { key: 'G', label: 'Algemar' },
-                    { key: 'H', label: 'Heli Ataque (Míssil)' },
+                    { key: 'H', label: 'Heli Apoio' },
                     { key: 'N', label: 'Drone (Scan)' },
-                    { key: 'U', label: 'Turret (Fora do Carro)' },
+                    { key: 'U', label: 'Turret (5s CD)' },
                     { key: 'E', label: 'Choque EMP' },
+                    { key: 'J', label: 'Radar Pulse (30s CD)' },
+                    { key: 'K', label: 'Spike Strip' },
+                    { key: 'B', label: 'Boost (Nitro)' },
                 ]);
             } else {
                 roleIcon.textContent = '🔪';
@@ -79,6 +82,11 @@ window.addEventListener('message', (e) => {
                 if (actionHint) actionHint.classList.add('hidden');
                 buildKeybinds([
                     { key: 'X', label: 'Cortina de Fumo' },
+                    { key: 'Y', label: 'Turret (5s CD)' },
+                    { key: 'J', label: 'Mancha de Óleo' },
+                    { key: 'K', label: 'Blip Falso (Decoy)' },
+                    { key: 'Z', label: 'Kit Reparação (60s CD)' },
+                    { key: 'B', label: 'Boost (Nitro)' },
                     { key: '/flip', label: 'Endireitar carro' }
                 ]);
             }
@@ -197,6 +205,28 @@ window.addEventListener('message', (e) => {
                 borderWarnEl.classList.remove('hidden');
             } else {
                 borderWarnEl.classList.add('hidden');
+            }
+            break;
+        }
+
+        // ── Boost active
+        case 'boostActive': {
+            if (!heliCooldownEl) break;
+            // Reutilizamos boost-cooldown temporário vía heli bar
+            break;
+        }
+
+        // ── Boost cooldown bar
+        case 'boostCooldown': {
+            if (!heliCooldownEl) break;
+            if (d.remaining <= 0) {
+                // Não esconder, pode ter heli cd ativo
+            } else {
+                heliCooldownEl.classList.remove('hidden');
+                const pct = (d.remaining / d.total) * 100;
+                if (heliBarEl) heliBarEl.style.width = pct + '%';
+                if (heliBarEl) heliBarEl.style.background = 'linear-gradient(90deg, #f97316, #ef4444)';
+                if (heliTimerEl) heliTimerEl.textContent = '🚀 ' + d.remaining + 's';
             }
             break;
         }

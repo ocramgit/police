@@ -7,6 +7,7 @@ local livingRobbers = 0
 local givenItems    = {}  -- { [src] = {{item,amount}, ...} }
 local heliCooldowns = {}  -- { [src] = timestamp }
 local activeZone    = nil -- zona sorteada desta ronda
+local heliCopSrc    = nil -- source ID do cop no helicóptero
 
 -- ── Utilitários ──────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ local function startRound(numCops, lockSeconds, waveMode)
     givenItems    = {}
     heliCooldowns = {}
     livingRobbers = 0
+    heliCopSrc    = nil
 
     -- Sortear zona aleatória
     activeZone = Config.zones[math.random(#Config.zones)]
@@ -92,8 +94,17 @@ local function startRound(numCops, lockSeconds, waveMode)
         else robbers[src] = true; livingRobbers = livingRobbers + 1 end
     end
 
-    print(('[POLICIA] Ronda | Pol:%d | Ladr:%d | Lock:%ds | Ondas:%s'):format(
-        numCops, livingRobbers, lockSeconds, waveMode and 'ON' or 'OFF'))
+    -- Se há 2+ cops, um deles vai OBRIGATORIAMENTE para o helicóptero
+    if numCops >= 2 then
+        for src in pairs(cops) do
+            heliCopSrc = src
+            break  -- primeiro cop da lista vai para o heli
+        end
+    end
+
+    print(('[POLICIA] Ronda | Pol:%d | Ladr:%d | Lock:%ds | Ondas:%s | HeliCop:%s'):format(
+        numCops, livingRobbers, lockSeconds, waveMode and 'ON' or 'OFF',
+        heliCopSrc and tostring(heliCopSrc) or 'NENHUM'))
 
     -- Enviar zona para todos
     TriggerClientEvent('policia:setupZone', -1,
@@ -115,13 +126,19 @@ local function startRound(numCops, lockSeconds, waveMode)
     for src in pairs(cops) do
         local spawnPos = copSpawnPool[copIdx] or copSpawnPool[1]
         copIdx = copIdx + 1
-        local car = randomFrom(Config.policeCars)
+        
+        local isHeliCop = (src == heliCopSrc)
+        local car = isHeliCop and Config.heliCopModel or randomFrom(Config.policeCars)
+        
         TriggerClientEvent('policia:assignRole', src, 'cop', car, lockSeconds,
             spawnPos, Config.policeWeapon, Config.policeAmmo, waveMode,
-            Config.roadblockCount)
+            Config.roadblockCount, isHeliCop)
         Citizen.Wait(200)
-        giveItem(src, Config.policeWeapon,  1, {ammo = Config.policeAmmo, quality = 100})
-        giveItem(src, Config.handcuffsItem, 1, {})
+        
+        if not isHeliCop then
+            giveItem(src, Config.policeWeapon,  1, {ammo = Config.policeAmmo, quality = 100})
+            giveItem(src, Config.handcuffsItem, 1, {})
+        end
     end
 
     for src in pairs(robbers) do
@@ -130,7 +147,7 @@ local function startRound(numCops, lockSeconds, waveMode)
         local car = randomFrom(Config.robberCars)
         TriggerClientEvent('policia:assignRole', src, 'robber', car, lockSeconds,
             spawnPos, Config.robberWeapon, Config.robberAmmo, waveMode,
-            Config.roadblockCount)
+            Config.roadblockCount, false)
         Citizen.Wait(200)
         giveItem(src, Config.robberWeapon, 1, {quality = 100})
     end
@@ -147,6 +164,27 @@ local function startRound(numCops, lockSeconds, waveMode)
         end
         notifyAll('🚓 POLÍCIAS LIBERTADOS! A caça começa AGORA!', 'error')
     end)
+
+    -- X-RAY para o cop no helicóptero — posição dos ladrões em tempo real (1s)
+    if heliCopSrc then
+        Citizen.CreateThread(function()
+            while roundActive and heliCopSrc do
+                local positions = {}
+                for robberSrc in pairs(robbers) do
+                    local rPed = GetPlayerPed(robberSrc)
+                    if DoesEntityExist(rPed) then
+                        local coords = GetEntityCoords(rPed)
+                        positions[#positions+1] = {
+                            x = coords.x, y = coords.y, z = coords.z,
+                            name = GetPlayerName(robberSrc)
+                        }
+                    end
+                end
+                TriggerClientEvent('policia:xrayUpdate', heliCopSrc, positions)
+                Citizen.Wait(1000)
+            end
+        end)
+    end
 
     -- Pistas periódicas (coords exactas)
     Citizen.CreateThread(function()
@@ -200,6 +238,7 @@ end
 function endRound(reason, winner)
     if not roundActive then return end
     roundActive = false
+    heliCopSrc  = nil
 
     local winMsg = winner == 'cops' and '🏆 POLÍCIAS VENCERAM!' or (winner == 'robbers' and '🏆 LADRÕES ESCAPARAM!' or '🏁 EMPATE!')
     notifyAll(winMsg .. '  ' .. (reason or ''), 'success')
@@ -340,6 +379,24 @@ AddEventHandler('policia:requestHeli', function()
 
     TriggerClientEvent('QBCore:Notify', src, '🚁 Helicóptero de apoio a caminho!', 'success', 4000)
     notifyAll('🚁 [POLÍCIA] Pediu apoio aéreo!', 'warning')
+end)
+
+-- ── Evento: Radar Pulse (cop J) — envia posições a esse cop ──
+
+RegisterServerEvent('policia:requestRadarPulse')
+AddEventHandler('policia:requestRadarPulse', function()
+    local src = source
+    if not roundActive or not cops[src] then return end
+
+    local positions = {}
+    for robberSrc in pairs(robbers) do
+        local rPed = GetPlayerPed(robberSrc)
+        if DoesEntityExist(rPed) then
+            local coords = GetEntityCoords(rPed)
+            positions[#positions+1] = { x = coords.x, y = coords.y, z = coords.z }
+        end
+    end
+    TriggerClientEvent('policia:radarPulseResult', src, positions)
 end)
 
 -- ── Evento: Iniciar ronda da UI ───────────────────────────────

@@ -106,6 +106,97 @@ Config.zones = {
             vector4(1150.00,-1800.00, 29.00,180.0),
         },
     },
+    -- ── NOVAS ZONAS PARA VARIEDADE ──
+    {
+        name   = '🌲 Floresta de Vinewood',
+        x      = -600.0, y = 200.0, z = 80.0, radius = 1000.0,
+        copsSpawns = {
+            vector4(-583.72,  259.31, 82.12, 180.0),
+            vector4(-700.00,  100.00, 75.00,  90.0),
+            vector4(-450.00,  350.00, 85.00, 270.0),
+            vector4(-800.00,  300.00, 78.00,   0.0),
+            vector4(-500.00,   50.00, 70.00, 180.0),
+        },
+        robbersSpawns = {
+            vector4(-400.00,  500.00, 90.00, 270.0),
+            vector4(-900.00,  150.00, 72.00,  90.0),
+            vector4(-650.00, -100.00, 65.00,   0.0),
+            vector4(-300.00,  200.00, 85.00, 180.0),
+            vector4(-750.00,  450.00, 80.00, 270.0),
+        },
+    },
+    {
+        name   = '🏗️ Porto de Los Santos',
+        x      = 150.0, y = -3100.0, z = 6.0, radius = 1000.0,
+        copsSpawns = {
+            vector4( 100.00,-3050.00,  7.00, 180.0),
+            vector4( 300.00,-3150.00,  6.50,  90.0),
+            vector4( -50.00,-3000.00,  7.00, 270.0),
+            vector4( 200.00,-3250.00,  6.00,   0.0),
+            vector4(  50.00,-2900.00,  7.50, 180.0),
+        },
+        robbersSpawns = {
+            vector4( 400.00,-3300.00,  6.00, 270.0),
+            vector4(-100.00,-3200.00,  7.00,  90.0),
+            vector4( 250.00,-2850.00,  7.50,   0.0),
+            vector4(-200.00,-3100.00,  6.50, 180.0),
+            vector4( 350.00,-2950.00,  7.00, 270.0),
+        },
+    },
+    {
+        name   = '🏔️ Monte Chiliad',
+        x      = 500.0, y = 5600.0, z = 700.0, radius = 1200.0,
+        copsSpawns = {
+            vector4( 450.00, 5550.00, 710.00, 180.0),
+            vector4( 600.00, 5700.00, 695.00,  90.0),
+            vector4( 350.00, 5450.00, 720.00, 270.0),
+            vector4( 550.00, 5800.00, 680.00,   0.0),
+            vector4( 400.00, 5650.00, 705.00, 180.0),
+        },
+        robbersSpawns = {
+            vector4( 700.00, 5900.00, 670.00, 270.0),
+            vector4( 250.00, 5350.00, 730.00,  90.0),
+            vector4( 650.00, 5500.00, 715.00,   0.0),
+            vector4( 300.00, 5750.00, 690.00, 180.0),
+            vector4( 500.00, 5400.00, 725.00, 270.0),
+        },
+    },
+    {
+        name   = '🎰 Vinewood Hills',
+        x      = -100.0, y = 900.0, z = 235.0, radius = 900.0,
+        copsSpawns = {
+            vector4( -80.00,  850.00, 236.00, 180.0),
+            vector4(-200.00,  950.00, 230.00,  90.0),
+            vector4(  50.00, 1000.00, 240.00, 270.0),
+            vector4(-150.00,  750.00, 232.00,   0.0),
+            vector4(   0.00, 1100.00, 238.00, 180.0),
+        },
+        robbersSpawns = {
+            vector4(-300.00, 1200.00, 245.00, 270.0),
+            vector4( 100.00,  700.00, 228.00,  90.0),
+            vector4(-250.00,  600.00, 225.00,   0.0),
+            vector4(  50.00, 1300.00, 250.00, 180.0),
+            vector4(-400.00,  800.00, 230.00, 270.0),
+        },
+    },
+    {
+        name   = '🏜️ Grand Senora Desert',
+        x      = 2500.0, y = 2800.0, z = 40.0, radius = 1300.0,
+        copsSpawns = {
+            vector4(2450.00, 2750.00, 42.00, 180.0),
+            vector4(2600.00, 2900.00, 38.00,  90.0),
+            vector4(2350.00, 2650.00, 44.00, 270.0),
+            vector4(2550.00, 3000.00, 36.00,   0.0),
+            vector4(2400.00, 2850.00, 40.00, 180.0),
+        },
+        robbersSpawns = {
+            vector4(2700.00, 3100.00, 35.00, 270.0),
+            vector4(2250.00, 2550.00, 46.00,  90.0),
+            vector4(2650.00, 2700.00, 41.00,   0.0),
+            vector4(2300.00, 2950.00, 39.00, 180.0),
+            vector4(2500.00, 2600.00, 43.00, 270.0),
+        },
+    },
 }
 
 -- Polícia: Supercarros topo de gama (A pedido)
@@ -137,6 +228,9 @@ Config.heliSupport = {
     attackRange  = 120,   -- metros — distância para disparar
 }
 
+-- ── HELICÓPTERO OBRIGATÓRIO (cop no heli) ────────────────────
+Config.heliCopModel = 'buzzard2'  -- modelo do heli para o cop obrigatório
+
 -- ── BORDAS DA ZONA ────────────────────────────────────────────
 Config.zoneBounce = {
     bounceForce = 14.0,  -- intensidade do rebote no veículo
@@ -162,6 +256,22 @@ Config.rampPositions = {
     {200.0, -1500.0,  26.0,  270.0, 'medium'},  -- Terminal Sul
     {-100.0, -550.0,  40.0,    0.0, 'large'},   -- Rockford / Norte
 }
+
+-- ── BOOST (NITRO) ────────────────────────────────────────────
+Config.boost = {
+    multiplier = 3.0,   -- multiplicador de potência durante boost
+    duration   = 3,     -- segundos de boost
+    cooldown   = 12,    -- segundos entre boosts
+}
+
+-- ── TURRET ───────────────────────────────────────────────────
+Config.turretCooldown = 5  -- segundos de cooldown da turret (era 20)
+
+-- ── WAVE SYSTEM ──────────────────────────────────────────────
+Config.waveInterval = 30  -- segundos entre ondas (era 60)
+
+-- ── NAME TAGS ────────────────────────────────────────────────
+Config.nameTagRange = 80.0  -- metros para mostrar nomes acima dos jogadores
 
 -- ── GERAL ────────────────────────────────────────────────────
 Config.allowedGroups = { 'god', 'admin' }
