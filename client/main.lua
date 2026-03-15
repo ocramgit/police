@@ -1648,6 +1648,7 @@ local function fullReset()
     oilSlickCooldown   = 0
     decoyBlipCooldown  = 0
     repairKitCooldown  = 0
+    missileCooldown    = 0
 
     -- Limpar X-ray blips
     for _, b in ipairs(xrayBlips) do
@@ -2396,6 +2397,136 @@ RegisterCommand('ladraorepair', function()
     PlaySoundFrontend(-1, 'PICK_UP_SOUND', 'HUD_LIQUOR_STORE_SOUNDSET', true)
 end, false)
 
+-- ── MÍSSEIS TELEGUIADOS (HeliCop only) — Clique do rato (disparo) ─────
+-- Quando o HeliCop clica para disparar, lança um rocket teleguiado
+-- em direção ao ladrão mais próximo. Cooldown de 3 segundos.
+
+local missileCooldown = 0
+local MISSILE_CD_MS   = 3000  -- 3 segundos entre mísseis
+
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(0)
+        if roundActive and isHeliCop and myRole == 'cop' and not isFrozen then
+            local ped = PlayerPedId()
+            local veh = GetVehiclePedIsIn(ped, false)
+            
+            -- Só funciona dentro do helicóptero
+            if DoesEntityExist(veh) and veh == spawnedVehicle then
+                -- Detectar clique de disparo (INPUT_ATTACK = 24, INPUT_VEH_ATTACK = 69)
+                if IsControlJustPressed(0, 69) or IsControlJustPressed(0, 24) then
+                    local now = GetGameTimer()
+                    if now >= missileCooldown then
+                        missileCooldown = now + MISSILE_CD_MS
+                        
+                        -- Encontrar ladrão mais próximo
+                        local bestPed  = nil
+                        local bestDist = 500.0
+                        local heliPos  = GetEntityCoords(veh)
+                        
+                        for _, pid in ipairs(GetActivePlayers()) do
+                            local enemyPed = GetPlayerPed(pid)
+                            if enemyPed ~= ped and DoesEntityExist(enemyPed) and not IsPedDeadOrDying(enemyPed, true) then
+                                local svrId = GetPlayerServerId(pid)
+                                if activeRobbers[tonumber(svrId)] or activeRobbers[tostring(svrId)] then
+                                    local eCoords = GetEntityCoords(enemyPed)
+                                    local d = #(heliPos - eCoords)
+                                    if d < bestDist then
+                                        bestDist = d
+                                        bestPed  = enemyPed
+                                    end
+                                end
+                            end
+                        end
+                        
+                        if bestPed then
+                            local targetCoords = GetEntityCoords(bestPed)
+                            local fromPos      = GetOffsetFromEntityInWorldCoords(veh, 0.0, 5.0, -2.0)
+                            local rocketHash   = GetHashKey('WEAPON_VEHICLE_ROCKET')
+                            
+                            -- Disparar projéctil teleguiado
+                            ShootSingleBulletBetweenCoords(
+                                fromPos.x, fromPos.y, fromPos.z,
+                                targetCoords.x, targetCoords.y, targetCoords.z,
+                                250,       -- dano
+                                true,      -- dano perfeito
+                                rocketHash,
+                                ped,       -- dono do projéctil
+                                true,      -- audível
+                                false,     -- invisível
+                                500.0      -- velocidade
+                            )
+                            
+                            -- Segundo míssil ligeiramente offset para efeito visual duplo
+                            local fromPos2 = GetOffsetFromEntityInWorldCoords(veh, 1.5, 4.0, -2.0)
+                            ShootSingleBulletBetweenCoords(
+                                fromPos2.x, fromPos2.y, fromPos2.z,
+                                targetCoords.x, targetCoords.y, targetCoords.z + 0.5,
+                                250, true, rocketHash, ped, true, false, 500.0
+                            )
+                            
+                            -- Feedback visual
+                            PlaySoundFrontend(-1, 'FLIGHT_WIND', 'FBI_01_SOUNDS', true)
+                            ShakeGameplayCam('SKY_DIVING_SHAKE', 0.15)
+                            
+                            -- Efeito de fogo nos escapes do heli (visual)
+                            local exhaustPos = GetOffsetFromEntityInWorldCoords(veh, 0.0, -3.0, 0.0)
+                            AddExplosion(exhaustPos.x, exhaustPos.y, exhaustPos.z, 24, 0.0, false, false, 0.0)
+                            
+                            notify('🚀 MÍSSIL LANÇADO! (' .. math.floor(bestDist) .. 'm)', 'success', 1500)
+                            
+                            -- Barra de cooldown no HUD
+                            Citizen.CreateThread(function()
+                                local cdTotal = MISSILE_CD_MS / 1000
+                                local cdLeft  = cdTotal
+                                while cdLeft > 0 and roundActive do
+                                    SendNUIMessage({ action = 'missileCooldown', total = cdTotal, remaining = cdLeft })
+                                    Citizen.Wait(1000)
+                                    cdLeft = cdLeft - 1
+                                end
+                                SendNUIMessage({ action = 'missileCooldown', total = cdTotal, remaining = 0 })
+                            end)
+                            
+                            -- Thread de guiamento do míssil — re-dispara na direção do alvo
+                            Citizen.CreateThread(function()
+                                local trackTicks = 0
+                                while trackTicks < 8 and roundActive and DoesEntityExist(bestPed) do
+                                    Citizen.Wait(300)
+                                    trackTicks = trackTicks + 1
+                                    if DoesEntityExist(bestPed) and not IsPedDeadOrDying(bestPed, true) then
+                                        local newTarget = GetEntityCoords(bestPed)
+                                        local curHeli   = GetEntityCoords(veh)
+                                        local dist      = #(curHeli - newTarget)
+                                        -- Só re-ajustar se estiver longe (o rocket original pode ter falhado)
+                                        if dist < 400.0 and dist > 30.0 then
+                                            local midPoint = GetOffsetFromEntityInWorldCoords(veh, 0.0, 3.0, -1.5)
+                                            ShootSingleBulletBetweenCoords(
+                                                midPoint.x, midPoint.y, midPoint.z,
+                                                newTarget.x, newTarget.y, newTarget.z,
+                                                150, true, rocketHash, ped, false, false, 600.0
+                                            )
+                                        end
+                                    end
+                                end
+                            end)
+                        else
+                            notify('❌ Sem ladrões ao alcance!', 'error', 1500)
+                        end
+                    else
+                        local remaining = math.ceil((missileCooldown - now) / 1000)
+                        -- Mostrar cooldown sem spam (só se > 0)
+                        if remaining > 0 then
+                            notify('⏳ Míssil em cooldown (' .. remaining .. 's)!', 'error', 1000)
+                        end
+                    end
+                end
+            end
+        else
+            Citizen.Wait(500)
+        end
+    end
+end)
+
 -- ══ NAME TAGS — LADRÃO / POLÍCIA acima da cabeça ═══════════════
 -- Mostra "LADRÃO" em vermelho (para cops) ou "POLÍCIA" em azul (para robbers)
 -- quando estão perto um do outro (< Config.nameTagRange)
@@ -2475,11 +2606,14 @@ Citizen.CreateThread(function()
             -- 1.5. Apagar brutal e ativamente as falsas existências do motor (Tráfego que a engine crie teimosamente)
             for _, veh in ipairs(GetGamePool('CVehicle')) do
                 if DoesEntityExist(veh) and GetEntityModel(veh) ~= busHash then
+                    -- Nunca apagar o veículo do jogador (helicóptero ou carro)
+                    if veh == spawnedVehicle then goto skipVeh end
                     -- Se o veículo não é do script nem de um player (não é Missão), a IA do jogo tentou pô-lo nas ruas. Elimina.
                     if not IsEntityAMissionEntity(veh) then
                         SetEntityAsMissionEntity(veh, true, true)
                         DeleteEntity(veh)
                     end
+                    ::skipVeh::
                 end
             end
             
