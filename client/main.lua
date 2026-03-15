@@ -1728,18 +1728,78 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
 
     local roadPos = vector4(spawnX, spawnY, spawnZ, spawnCoords.w)
     
-    -- Se é HeliCop, spawnar helicóptero armado em vez de carro
+    -- Se é HeliCop, spawnar helicóptero num espaço amplo dentro da zona
     if isHeliCop then
-        local heliHash = GetHashKey(carModel)
-        RequestModel(heliHash)
-        local ht = 0
-        while not HasModelLoaded(heliHash) and ht < 50 do Citizen.Wait(100); ht = ht + 1 end
-        if HasModelLoaded(heliHash) then
+        -- 1. Encontrar espaço amplo dentro da zona de jogo
+        local heliSpawnX, heliSpawnY, heliSpawnZ = spawnX, spawnY, spawnZ
+        
+        if zoneData then
+            -- Tentar 8 posições radiais a ~40% do raio, partindo do centro da zona
+            local bestX, bestY, bestZ = zoneData.x, zoneData.y, zoneData.z
+            local found = false
+            local tryRadius = zoneData.radius * 0.4
+            
+            for attempt = 1, 8 do
+                local angle = (attempt / 8) * math.pi * 2
+                local testX = zoneData.x + math.cos(angle) * tryRadius
+                local testY = zoneData.y + math.sin(angle) * tryRadius
+                
+                -- Carregar colisão neste ponto
+                RequestCollisionAtCoord(testX, testY, zoneData.z)
+                Citizen.Wait(200)
+                
+                local gOk, gZ = GetGroundZFor_3dCoord(testX, testY, zoneData.z + 200.0, false)
+                if gOk then
+                    -- Verificar se NÃO há nó de estrada muito perto (= zona aberta, não entre prédios)
+                    local roadOk, nodePos = GetClosestVehicleNode(testX, testY, gZ, 0, 3.0, 0)
+                    if roadOk and nodePos then
+                        bestX = nodePos.x
+                        bestY = nodePos.y
+                        bestZ = gZ
+                        found = true
+                        break
+                    end
+                end
+            end
+            
+            if not found then
+                -- Fallback: centro da zona
+                local gOk, gZ = GetGroundZFor_3dCoord(zoneData.x, zoneData.y, zoneData.z + 200.0, false)
+                bestZ = gOk and gZ or zoneData.z
+            end
+            
+            heliSpawnX = bestX
+            heliSpawnY = bestY
+            heliSpawnZ = bestZ
+        end
+        
+        -- 2. Tentar carregar modelo com fallback
+        local heliModels = Config.heliCopFallbacks or { carModel, 'frogger', 'polmav', 'maverick' }
+        local heliHash = nil
+        local loadedModel = nil
+        
+        for _, mdl in ipairs(heliModels) do
+            local h = GetHashKey(mdl)
+            RequestModel(h)
+            local ht = 0
+            while not HasModelLoaded(h) and ht < 50 do Citizen.Wait(100); ht = ht + 1 end
+            if HasModelLoaded(h) then
+                heliHash = h
+                loadedModel = mdl
+                break
+            else
+                SetModelAsNoLongerNeeded(h)
+            end
+        end
+        
+        if heliHash then
             if spawnedVehicle and DoesEntityExist(spawnedVehicle) then
                 DeleteEntity(spawnedVehicle)
                 spawnedVehicle = nil
             end
-            local heli = CreateVehicle(heliHash, spawnX, spawnY, spawnZ + 30.0, spawnCoords.w, true, false)
+            
+            -- Spawnar a 50m de altitude para não bater em nada
+            local heli = CreateVehicle(heliHash, heliSpawnX, heliSpawnY, heliSpawnZ + 50.0, spawnCoords.w, true, false)
             SetVehicleEngineOn(heli, true, false, true)
             SetHeliBladesFullSpeed(heli)
             SetEntityInvincible(heli, true)
@@ -1758,8 +1818,12 @@ AddEventHandler('policia:assignRole', function(role, carModel, lockSeconds, spaw
                 end
             end)
             
+            -- Teleportar jogador para o helicóptero
+            SetEntityCoords(ped, heliSpawnX, heliSpawnY, heliSpawnZ + 50.0, false, false, false, true)
             Citizen.Wait(500)
             TaskWarpPedIntoVehicle(ped, heli, -1)
+        else
+            notify('❌ ERRO: Nenhum modelo de helicóptero carregou! Contacta um admin.', 'error', 8000)
         end
     else
         local veh = spawnVehicle(carModel, roadPos)

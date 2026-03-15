@@ -229,7 +229,8 @@ Config.heliSupport = {
 }
 
 -- ── HELICÓPTERO OBRIGATÓRIO (cop no heli) ────────────────────
-Config.heliCopModel = 'buzzard2'  -- modelo do heli para o cop obrigatório
+Config.heliCopModel = 'frogger'  -- modelo principal do heli para o cop obrigatório
+Config.heliCopFallbacks = { 'frogger', 'polmav', 'maverick', 'buzzard2', 'buzzard', 'supervolito' }
 
 -- ── BORDAS DA ZONA ────────────────────────────────────────────
 Config.zoneBounce = {
